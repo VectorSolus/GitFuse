@@ -1,0 +1,144 @@
+import {
+  type AnyPgColumn,
+  bigint,
+  foreignKey,
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid
+} from "drizzle-orm/pg-core";
+
+export const planTier = pgEnum("plan_tier", ["free", "pro", "team", "enterprise"]);
+export const syncEventType = pgEnum("sync_event_type", ["sync", "pull", "drop", "undo", "rebase-sync"]);
+export const bundleStatus = pgEnum("bundle_status", ["active", "superseded", "expired", "dropped"]);
+
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    githubId: text("github_id").notNull(),
+    githubUsername: text("github_username").notNull(),
+    email: text("email").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    githubIdUnique: unique("users_github_id_unique").on(table.githubId)
+  })
+);
+
+export const devices = pgTable(
+  "devices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true })
+  },
+  (table) => ({
+    tokenHashUnique: unique("devices_token_hash_unique").on(table.tokenHash),
+    userIdIdx: index("devices_user_id_idx").on(table.userId)
+  })
+);
+
+export const plans = pgTable(
+  "plans",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    tier: planTier("tier").notNull().default("free"),
+    stripeCustomerId: text("stripe_customer_id"),
+    stripeSubId: text("stripe_sub_id"),
+    teamSeatCount: integer("team_seat_count").notNull().default(1),
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    userIdUnique: unique("plans_user_id_unique").on(table.userId)
+  })
+);
+
+export const repositories = pgTable(
+  "repositories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    rootSha: text("root_sha").notNull(),
+    displayName: text("display_name").notNull(),
+    remoteUrl: text("remote_url"),
+    relayEntryId: text("relay_entry_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true })
+  },
+  (table) => ({
+    relayEntryIdUnique: unique("repositories_relay_entry_id_unique").on(table.relayEntryId),
+    userRootShaUnique: unique("repositories_user_id_root_sha_unique").on(table.userId, table.rootSha),
+    userIdIdx: index("repositories_user_id_idx").on(table.userId)
+  })
+);
+
+export const syncEvents = pgTable(
+  "sync_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    repositoryId: uuid("repository_id").notNull().references(() => repositories.id, { onDelete: "cascade" }),
+    deviceId: uuid("device_id").notNull().references(() => devices.id, { onDelete: "cascade" }),
+    eventType: syncEventType("event_type").notNull(),
+    commitCount: integer("commit_count").notNull().default(0),
+    bundleSizeBytes: bigint("bundle_size_bytes", { mode: "number" }).notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    repositoryCreatedIdx: index("sync_events_repository_created_idx").on(table.repositoryId, table.createdAt)
+  })
+);
+
+export const bundles = pgTable(
+  "bundles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    repositoryId: uuid("repository_id").notNull().references(() => repositories.id, { onDelete: "cascade" }),
+    deviceId: uuid("device_id").notNull().references(() => devices.id, { onDelete: "cascade" }),
+    bundleHash: text("bundle_hash").notNull(),
+    commitCount: integer("commit_count").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    r2Key: text("r2_key").notNull(),
+    status: bundleStatus("status").notNull().default("active"),
+    parentBundleId: uuid("parent_bundle_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull()
+  },
+  (table) => ({
+    parentBundleFk: foreignKey({
+      columns: [table.parentBundleId],
+      foreignColumns: [table.id as AnyPgColumn],
+      name: "bundles_parent_bundle_id_fk"
+    }),
+    repositoryStatusIdx: index("bundles_repository_status_idx").on(table.repositoryId, table.status),
+    r2KeyUnique: unique("bundles_r2_key_unique").on(table.r2Key)
+  })
+);
+
+export const cliAuthSessions = pgTable(
+  "cli_auth_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: text("code").notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    deviceName: text("device_name").notNull(),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    codeUnique: unique("cli_auth_sessions_code_unique").on(table.code)
+  })
+);
