@@ -1,0 +1,20 @@
+{
+  "name": "@gitfuse/types",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./relay": "./src/relay.ts",
+    "./workspace": "./src/workspace.ts",
+    "./billing": "./src/billing.ts"
+  },
+  "scripts": {
+    "build": "tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

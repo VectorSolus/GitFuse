@@ -1,0 +1,27 @@
+{
+  "name": "@gitfuse/relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@gitfuse/db": "workspace:*",
+    "@gitfuse/types": "workspace:*",
+    "@hono/node-server": "^1.13.7",
+    "drizzle-orm": "^0.38.3",
+    "hono": "^4.6.16",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
