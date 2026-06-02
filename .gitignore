@@ -1,0 +1,92 @@
+# ── Node / pnpm ────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+.pnpm-debug.log
+
+# ── Build outputs ───────────────────────────────────────────────────
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# ── Turborepo ───────────────────────────────────────────────────────
+.turbo/
+
+# ── Go (CLI) ────────────────────────────────────────────────────────
+apps/cli/gitfuse
+apps/cli/gitfuse-*
+apps/cli/dist/
+bin/
+*.exe
+*.test
+*.out
+/tmp/gitfuse-*
+
+# ── Environment variables ───────────────────────────────────────────
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+
+# ── Database ────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Logs ────────────────────────────────────────────────────────────
+*.log
+nohup.out
+logs/
+
+# ── Python / virtualenv ─────────────────────────────────────────────
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── OS ──────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── Editor ──────────────────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+!.vscode/extensions.json
+
+# ── Test and coverage ───────────────────────────────────────────────
+coverage/
+*.cover
+.nyc_output/
+test-results/
+
+# ── Relay runtime artifacts ─────────────────────────────────────────
+relay/dist/
+
+# ── gitfuse local sync state ────────────────────────────────────────
+.gitfuse/queue/
+.gitfuse/snapshots/
+.gitfuse/backup/
+
+# Verification files 
+VERIFICATION.md
+TASKS.md
+Codex_Plan.md
+IMPLEMENTATION_PLAN.md
