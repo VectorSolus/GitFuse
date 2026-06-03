@@ -16,6 +16,14 @@ func GenerateIdentity() (*age.X25519Identity, error) {
 	return identity, nil
 }
 
+func GenerateIdentityString() (string, error) {
+	identity, err := GenerateIdentity()
+	if err != nil {
+		return "", err
+	}
+	return identity.String(), nil
+}
+
 func Encrypt(plain []byte, recipient age.Recipient) ([]byte, error) {
 	var out bytes.Buffer
 	writer, err := age.Encrypt(&out, recipient)
