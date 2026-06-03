@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 const globalDirName = ".gitfuse"
@@ -32,4 +33,44 @@ func EnsureGlobalDir() (string, error) {
 		return "", fmt.Errorf("secure gitfuse config directory: %w", err)
 	}
 	return dir, nil
+}
+
+type Credentials struct {
+	Username     string
+	Token        string
+	Key          string
+	RegisteredAt time.Time
+}
+
+func CredentialsPath() (string, error) {
+	dir, err := EnsureGlobalDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "credentials"), nil
+}
+
+func WriteCredentials(credentials Credentials) (string, error) {
+	path, err := CredentialsPath()
+	if err != nil {
+		return "", err
+	}
+	tmp := path + ".tmp"
+	content := fmt.Sprintf("[account]\nusername = %q\ntoken = %q\nkey = %q\nregistered_at = %q\n",
+		credentials.Username,
+		credentials.Token,
+		credentials.Key,
+		credentials.RegisteredAt.UTC().Format(time.RFC3339),
+	)
+	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
+		return "", fmt.Errorf("write credentials temp file: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("commit credentials file: %w", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return "", fmt.Errorf("secure credentials file: %w", err)
+	}
+	return path, nil
 }
