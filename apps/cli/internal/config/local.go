@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 )
 
@@ -64,4 +65,29 @@ func WriteLocalFile(path string, content []byte, mode os.FileMode) (string, erro
 		return "", err
 	}
 	return path, nil
+}
+
+func ReadLocalConfig(repoPath string) (LocalConfig, error) {
+	path := filepath.Join(GitfuseDir(repoPath), "config")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return LocalConfig{}, err
+	}
+	text := string(content)
+	return LocalConfig{
+		RootSHA:      localTomlString(text, "root_sha"),
+		RelayEntryID: localTomlString(text, "relay_entry_id"),
+		Account:      localTomlString(text, "account"),
+		DisplayName:  localTomlString(text, "display_name"),
+		RemoteURL:    localTomlString(text, "url"),
+		Platform:     localTomlString(text, "platform"),
+	}, nil
+}
+
+func localTomlString(text, key string) string {
+	match := regexp.MustCompile(key + `\s*=\s*"([^"]*)"`).FindStringSubmatch(text)
+	if len(match) != 2 {
+		return ""
+	}
+	return match[1]
 }
