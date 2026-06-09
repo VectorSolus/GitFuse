@@ -269,6 +269,7 @@ button {
 }
 
 .login-page,
+.cli-auth-page,
 .dashboard-page {
   display: grid;
   min-height: 100vh;
@@ -276,7 +277,8 @@ button {
   place-items: center;
 }
 
-.login-panel {
+.login-panel,
+.cli-auth-panel {
   background: white;
   border: 1px solid #e1e6ef;
   border-radius: 8px;
@@ -285,11 +287,13 @@ button {
 }
 
 .login-panel h1,
+.cli-auth-panel h1,
 .dashboard-page h1 {
   margin: 0 0 12px;
 }
 
-.login-panel button {
+.login-panel button,
+.approve-button {
   background: #10233f;
   border: 0;
   border-radius: 8px;
@@ -299,6 +303,31 @@ button {
   margin-top: 22px;
   padding: 11px 14px;
   width: 100%;
+}
+
+.approve-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.code-display {
+  background: #f0f4f9;
+  border: 1px solid #d8e0ec;
+  border-radius: 8px;
+  color: #10233f;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 28px;
+  font-weight: 800;
+  margin: 22px 0 6px;
+  padding: 16px;
+  text-align: center;
+}
+
+.auth-note {
+  color: #66748b;
+  font-size: 14px;
+  margin: 12px 0 0;
+  text-align: center;
 }
 
 @media (max-width: 860px) {
