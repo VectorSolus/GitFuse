@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 )
 
@@ -73,4 +74,61 @@ func WriteCredentials(credentials Credentials) (string, error) {
 		return "", fmt.Errorf("secure credentials file: %w", err)
 	}
 	return path, nil
+}
+
+type ActiveRepo struct {
+	Name string
+	Path string
+}
+
+func ActiveRepoPath() (string, error) {
+	dir, err := EnsureGlobalDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "active_repo"), nil
+}
+
+func WriteActiveRepo(repo ActiveRepo) (string, error) {
+	path, err := ActiveRepoPath()
+	if err != nil {
+		return "", err
+	}
+	tmp := path + ".tmp"
+	content := fmt.Sprintf("[repo]\nname = %q\npath = %q\n", repo.Name, repo.Path)
+	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
+		return "", fmt.Errorf("write active repo temp file: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("commit active repo file: %w", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return "", fmt.Errorf("secure active repo file: %w", err)
+	}
+	return path, nil
+}
+
+func ReadActiveRepo() (ActiveRepo, error) {
+	path, err := ActiveRepoPath()
+	if err != nil {
+		return ActiveRepo{}, err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return ActiveRepo{}, err
+	}
+	text := string(content)
+	return ActiveRepo{
+		Name: globalTomlString(text, "name"),
+		Path: globalTomlString(text, "path"),
+	}, nil
+}
+
+func globalTomlString(text, key string) string {
+	match := regexp.MustCompile(key + `\s*=\s*"([^"]*)"`).FindStringSubmatch(text)
+	if len(match) != 2 {
+		return ""
+	}
+	return match[1]
 }
