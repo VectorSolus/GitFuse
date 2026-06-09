@@ -422,6 +422,36 @@ button {
   color: #7a4c00;
 }
 
+.device-state-active {
+  background: #e7f7ef;
+  color: #17643a;
+}
+
+.device-state-revoked {
+  background: #f3f5f8;
+  color: #66748b;
+}
+
+.danger-button {
+  background: #fff1f1;
+  border: 1px solid #f1b5b5;
+  border-radius: 8px;
+  color: #9d2323;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 8px 11px;
+}
+
+.danger-button:hover {
+  background: #ffe6e6;
+}
+
+.muted-action {
+  color: #66748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .repo-empty {
   background: white;
   border: 1px solid #e1e6ef;
