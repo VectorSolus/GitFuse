@@ -91,6 +91,26 @@ func AddDisposedCommit(repoPath, commit string) error {
 	return err
 }
 
+func AddDisposedCommits(repoPath string, commits []string) error {
+	ledger, err := ReadLedger(repoPath)
+	if err != nil {
+		return err
+	}
+	seen := make(map[string]bool, len(ledger.DisposedCommits)+len(commits))
+	for _, existing := range ledger.DisposedCommits {
+		seen[existing] = true
+	}
+	for _, commit := range commits {
+		if commit == "" || seen[commit] {
+			continue
+		}
+		ledger.DisposedCommits = append(ledger.DisposedCommits, commit)
+		seen[commit] = true
+	}
+	_, err = WriteLedger(repoPath, ledger)
+	return err
+}
+
 func UndoLastSync(repoPath string) (string, error) {
 	ledger, err := ReadLedger(repoPath)
 	if err != nil {
@@ -101,6 +121,26 @@ func UndoLastSync(repoPath string) (string, error) {
 	ledger.PreviousSyncedHead = ""
 	_, err = WriteLedger(repoPath, ledger)
 	return restored, err
+}
+
+func SetPaused(repoPath string, paused bool) error {
+	ledger, err := ReadLedger(repoPath)
+	if err != nil {
+		return err
+	}
+	ledger.Paused = paused
+	_, err = WriteLedger(repoPath, ledger)
+	return err
+}
+
+func SetSyncedHeadForSelection(repoPath, syncedHead string) error {
+	ledger, err := ReadLedger(repoPath)
+	if err != nil {
+		return err
+	}
+	ledger.SyncedHead = syncedHead
+	_, err = WriteLedger(repoPath, ledger)
+	return err
 }
 
 func tomlString(text, key string) string {

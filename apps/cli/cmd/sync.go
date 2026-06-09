@@ -67,6 +67,10 @@ func runSync(ctx context.Context, cmd *cobra.Command, opts syncOptions, commitRa
 	if err != nil {
 		return fmt.Errorf("read .gitfuse/ledger: %w", err)
 	}
+	if ledger.Paused {
+		fmt.Fprintln(cmd.OutOrStdout(), "gitfuse is paused. Run 'gitfuse resume' to sync again.")
+		return nil
+	}
 	syncedHead := ledger.SyncedHead
 	if opts.all {
 		syncedHead = ""
