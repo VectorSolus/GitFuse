@@ -76,6 +76,25 @@ func WriteCredentials(credentials Credentials) (string, error) {
 	return path, nil
 }
 
+func ReadCredentials() (Credentials, error) {
+	path, err := CredentialsPath()
+	if err != nil {
+		return Credentials{}, err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return Credentials{}, err
+	}
+	text := string(content)
+	registeredAt, _ := time.Parse(time.RFC3339, globalTomlString(text, "registered_at"))
+	return Credentials{
+		Username:     globalTomlString(text, "username"),
+		Token:        globalTomlString(text, "token"),
+		Key:          globalTomlString(text, "key"),
+		RegisteredAt: registeredAt,
+	}, nil
+}
+
 type ActiveRepo struct {
 	Name string
 	Path string
