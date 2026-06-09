@@ -42,6 +42,14 @@ func runPull(cmd *cobra.Command, opts pullOptions) error {
 	if err := gfgit.PreflightCheck(repoPath); err != nil {
 		return err
 	}
+	applyRewrite, err := confirmHistoryRewriteIfNeeded(cmd, repoPath)
+	if err != nil {
+		return err
+	}
+	if !applyRewrite {
+		fmt.Fprintln(cmd.OutOrStdout(), "Pull cancelled. Rewritten history not applied.")
+		return nil
+	}
 	if opts.force {
 		if err := requireTypedYes(cmd); err != nil {
 			return err
@@ -91,4 +99,20 @@ func pullCommitCount() int {
 	var count int
 	_, _ = fmt.Sscanf(raw, "%d", &count)
 	return count
+}
+
+func confirmHistoryRewriteIfNeeded(cmd *cobra.Command, repoPath string) (bool, error) {
+	if os.Getenv("GITFUSE_HISTORY_REWRITTEN") != "1" {
+		if _, err := os.Stat(filepath.Join(repoPath, ".gitfuse", "history-rewrite")); err != nil {
+			return true, nil
+		}
+	}
+	fmt.Fprint(cmd.OutOrStdout(), "History was rewritten. Apply? [Y/n] ")
+	reader := bufio.NewReader(cmd.InOrStdin())
+	line, err := reader.ReadString('\n')
+	if err != nil && strings.TrimSpace(line) == "" {
+		return false, err
+	}
+	answer := strings.ToLower(strings.TrimSpace(line))
+	return answer == "" || answer == "y" || answer == "yes", nil
 }
