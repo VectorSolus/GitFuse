@@ -292,6 +292,152 @@ button {
   margin: 0 0 12px;
 }
 
+.dashboard-shell {
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 32px 24px 48px;
+}
+
+.dashboard-header {
+  align-items: flex-end;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.dashboard-header h1 {
+  color: #101827;
+  font-size: 34px;
+  line-height: 1.15;
+  margin: 4px 0 0;
+}
+
+.dashboard-header > p {
+  color: #4b5b73;
+  font-weight: 700;
+  margin: 0;
+}
+
+.repo-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.repo-summary div {
+  background: white;
+  border: 1px solid #e1e6ef;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.repo-summary span {
+  color: #66748b;
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.repo-summary strong {
+  color: #10233f;
+  font-size: 24px;
+}
+
+.repo-table-wrap {
+  background: white;
+  border: 1px solid #e1e6ef;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.repo-table {
+  border-collapse: collapse;
+  min-width: 920px;
+  width: 100%;
+}
+
+.repo-table th,
+.repo-table td {
+  border-bottom: 1px solid #edf1f6;
+  padding: 14px 16px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.repo-table th {
+  color: #66748b;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.repo-table td {
+  color: #25344c;
+  font-size: 14px;
+}
+
+.repo-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.repo-table strong,
+.repo-table span,
+.repo-table small,
+.repo-table code {
+  display: block;
+}
+
+.repo-table span,
+.repo-table small {
+  color: #66748b;
+  margin-top: 4px;
+}
+
+.repo-table code {
+  color: #10233f;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  margin-top: 6px;
+  word-break: break-all;
+}
+
+.repo-state {
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 9px;
+  text-transform: capitalize;
+}
+
+.repo-state-synced {
+  background: #e7f7ef;
+  color: #17643a;
+}
+
+.repo-state-waiting {
+  background: #fff3d8;
+  color: #7a4c00;
+}
+
+.repo-empty {
+  background: white;
+  border: 1px solid #e1e6ef;
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.repo-empty h2 {
+  margin: 0 0 8px;
+}
+
+.repo-empty p {
+  color: #4b5b73;
+  margin: 0;
+}
+
 .login-panel button,
 .approve-button {
   background: #10233f;
@@ -333,8 +479,15 @@ button {
 @media (max-width: 860px) {
   .landing-hero,
   .band-inner,
-  .comparison-grid {
+  .comparison-grid,
+  .repo-summary {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-header {
+    align-items: flex-start;
+    display: grid;
+    gap: 10px;
   }
 
   .landing-hero {
