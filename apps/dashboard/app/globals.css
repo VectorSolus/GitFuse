@@ -644,6 +644,63 @@ button {
   padding-bottom: 0;
 }
 
+.billing-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.billing-plan,
+.billing-invoices {
+  background: white;
+  border: 1px solid #e1e6ef;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.billing-plan header {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+}
+
+.billing-plan header span {
+  color: #101827;
+  font-size: 22px;
+  font-weight: 900;
+  text-transform: capitalize;
+}
+
+.billing-plan header strong {
+  color: #2e6fbc;
+  font-size: 18px;
+}
+
+.billing-plan ul {
+  color: #4b5b73;
+  display: grid;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding-left: 18px;
+}
+
+.billing-invoices h2 {
+  color: #101827;
+  font-size: 20px;
+  margin: 0 0 16px;
+}
+
+.billing-invoices p {
+  color: #4b5b73;
+  margin: 0;
+}
+
+.billing-invoices a {
+  color: #2e6fbc;
+  font-weight: 800;
+}
+
 .repo-empty {
   background: white;
   border: 1px solid #e1e6ef;
@@ -715,7 +772,8 @@ button {
   .history-event header,
   .history-event dl,
   .usage-layout,
-  .usage-facts {
+  .usage-facts,
+  .billing-grid {
     grid-template-columns: 1fr;
   }
 
