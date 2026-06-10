@@ -12,3 +12,7 @@ export async function getBundleObject(key: string) {
 export async function deleteBundleObject(key: string) {
   return objects.delete(key);
 }
+
+export async function listBundleObjectKeys() {
+  return [...objects.keys()].sort();
+}

@@ -1,12 +1,20 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { cleanupExpiredBundles } from "./cleanup";
 import type { AuthenticatedDevice } from "./db/queries";
-import { authenticateToken, getUsage, seedLimitScenario } from "./db/queries";
+import {
+  authenticateToken,
+  getUsage,
+  listBundleStatusSummary,
+  seedCleanupScenario,
+  seedLimitScenario
+} from "./db/queries";
 import { sessionExpired } from "./errors/responses";
 import { authRoutes } from "./routes/auth";
 import { bundleRoutes } from "./routes/bundles";
 import { deviceRoutes } from "./routes/devices";
 import { repoRoutes } from "./routes/repos";
+import { listBundleObjectKeys, putBundleObject } from "./storage/r2";
 
 type Variables = {
   auth: AuthenticatedDevice;
@@ -28,6 +36,29 @@ app.post("/__test/limits/seed", async (c) => {
       storageBytes: Number(body.storageBytes ?? 0)
     })
   );
+});
+
+app.post("/__test/cleanup/seed", async (c) => {
+  if (process.env.NODE_ENV === "production") return c.json({ error: "not_found" }, 404);
+  const body = await c.req.json().catch(() => ({}));
+  const seeded = await seedCleanupScenario({ username: String(body.username ?? `cleanup-${Date.now()}`) });
+  await putBundleObject(seeded.expiredKey, new TextEncoder().encode("expired"));
+  await putBundleObject(seeded.activeKey, new TextEncoder().encode("active"));
+  await putBundleObject(seeded.droppedKey, new TextEncoder().encode("dropped"));
+  return c.json(seeded);
+});
+
+app.get("/__test/cleanup/state", async (c) => {
+  if (process.env.NODE_ENV === "production") return c.json({ error: "not_found" }, 404);
+  return c.json({ bundles: await listBundleStatusSummary(), objects: await listBundleObjectKeys() });
+});
+
+app.post("/v1/admin/cleanup/expired-bundles", async (c) => {
+  const secret = process.env.CLEANUP_JOB_SECRET;
+  if (secret && c.req.header("authorization") !== `Bearer ${secret}`) {
+    return c.json({ error: "UNAUTHORIZED", message: "Cleanup job is not authorized." }, 401);
+  }
+  return c.json(await cleanupExpiredBundles());
 });
 
 app.route("/v1/auth", authRoutes);

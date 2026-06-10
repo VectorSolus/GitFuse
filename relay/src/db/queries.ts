@@ -246,6 +246,28 @@ export async function updateBundleStatus(bundleId: string, status: BundleStatus)
   return updated;
 }
 
+export async function findExpiredActiveBundles(now = new Date()) {
+  const threshold = now.getTime();
+  return [...bundles.values()].filter(
+    (bundle) => bundle.status === "active" && new Date(bundle.expiresAt).getTime() <= threshold
+  );
+}
+
+export async function expireBundle(bundleId: string) {
+  return updateBundleStatus(bundleId, "expired");
+}
+
+export async function listBundleStatusSummary() {
+  return [...bundles.values()]
+    .map((bundle) => ({
+      id: bundle.id,
+      r2Key: bundle.r2Key,
+      status: bundle.status,
+      expiresAt: bundle.expiresAt
+    }))
+    .sort((a, b) => a.r2Key.localeCompare(b.r2Key));
+}
+
 export async function recordSyncEvent(input: {
   repositoryId: string;
   deviceId: string;
@@ -369,4 +391,91 @@ export async function seedLimitScenario(input: {
   }
 
   return { token, userId: user.id, deviceId: primaryDevice.id, relayEntryId: createdRepos[0]?.relayEntryId ?? null };
+}
+
+export async function seedCleanupScenario(input: { username: string }) {
+  const user: UserRecord = {
+    id: randomUUID(),
+    githubUsername: input.username,
+    email: `${input.username}@example.com`,
+    tier: "free"
+  };
+  users.set(user.id, user);
+
+  const deviceToken = `gf_${randomBytes(32).toString("base64url")}`;
+  const device: Device & { tokenHash: string; token: string } = {
+    id: randomUUID(),
+    userId: user.id,
+    name: `${input.username}-device`,
+    tokenHash: hashToken(deviceToken),
+    token: deviceToken,
+    lastActiveAt: nowIso(),
+    createdAt: nowIso(),
+    revokedAt: null
+  };
+  devices.set(device.id, device);
+
+  const repo: Repository = {
+    id: randomUUID(),
+    userId: user.id,
+    rootSha: `${input.username}-root`,
+    displayName: `${input.username}-repo`,
+    remoteUrl: null,
+    relayEntryId: `${input.username}-entry`,
+    createdAt: nowIso(),
+    lastSyncedAt: null
+  };
+  repositories.set(repo.id, repo);
+
+  const expiredKey = `${user.id}/${repo.relayEntryId}/expired.bundle.enc`;
+  const activeKey = `${user.id}/${repo.relayEntryId}/active.bundle.enc`;
+  const droppedKey = `${user.id}/${repo.relayEntryId}/dropped.bundle.enc`;
+  const baseBundle = {
+    repositoryId: repo.id,
+    deviceId: device.id,
+    commitCount: 1,
+    sizeBytes: 10,
+    parentBundleId: null,
+    createdAt: nowIso()
+  };
+
+  const expiredBundle: Bundle = {
+    id: randomUUID(),
+    ...baseBundle,
+    bundleHash: `${input.username}-expired`,
+    r2Key: expiredKey,
+    status: "active",
+    expiresAt: new Date(Date.now() - 60 * 1000).toISOString()
+  };
+  const activeBundle: Bundle = {
+    id: randomUUID(),
+    ...baseBundle,
+    bundleHash: `${input.username}-active`,
+    r2Key: activeKey,
+    status: "active",
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+  };
+  const droppedBundle: Bundle = {
+    id: randomUUID(),
+    ...baseBundle,
+    bundleHash: `${input.username}-dropped`,
+    r2Key: droppedKey,
+    status: "dropped",
+    expiresAt: new Date(Date.now() - 60 * 1000).toISOString()
+  };
+
+  bundles.set(expiredBundle.id, expiredBundle);
+  bundles.set(activeBundle.id, activeBundle);
+  bundles.set(droppedBundle.id, droppedBundle);
+
+  return {
+    expiredKey,
+    activeKey,
+    droppedKey,
+    bundleIds: {
+      expired: expiredBundle.id,
+      active: activeBundle.id,
+      dropped: droppedBundle.id
+    }
+  };
 }

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc --noEmit",
+    "clean:expired": "tsx src/cleanup-runner.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "start": "tsx src/index.ts"
