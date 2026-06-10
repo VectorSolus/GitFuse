@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { applyStripeSubscription } from "../../../../lib/billing";
+import { sendBillingReceipt } from "../../../../lib/resend";
 
 type StripeSubscriptionPayload = {
   type?: string;
@@ -9,6 +10,11 @@ type StripeSubscriptionPayload = {
     object?: {
       id?: string;
       customer?: string;
+      customer_email?: string;
+      number?: string;
+      amount_paid?: number;
+      currency?: string;
+      hosted_invoice_url?: string | null;
       current_period_end?: number;
       items?: { data?: Array<{ price?: { id?: string } }> };
     };
@@ -45,6 +51,19 @@ export async function POST(request: Request) {
         stripeSubId: subscription.id,
         priceId: subscription.items?.data?.[0]?.price?.id,
         currentPeriodEnd: subscription.current_period_end
+      });
+    }
+  }
+
+  if (event.type === "invoice.payment_succeeded") {
+    const invoice = event.data?.object;
+    if (invoice?.customer_email) {
+      await sendBillingReceipt({
+        email: invoice.customer_email,
+        invoiceNumber: invoice.number ?? invoice.id ?? "invoice",
+        amountPaid: invoice.amount_paid ?? 0,
+        currency: (invoice.currency ?? "usd").toUpperCase(),
+        hostedInvoiceUrl: invoice.hosted_invoice_url
       });
     }
   }
