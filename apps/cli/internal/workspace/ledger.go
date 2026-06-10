@@ -11,14 +11,15 @@ import (
 )
 
 type Ledger struct {
-	SyncedHead         string
-	PreviousSyncedHead string
-	PendingCommits     []string
-	DisposedCommits    []string
-	QueuedBundles      []string
-	LastPullDevice     string
-	LastPullAt         string
-	Paused             bool
+	SyncedHead            string
+	PreviousSyncedHead    string
+	PendingCommits        []string
+	DisposedCommits       []string
+	QueuedBundles         []string
+	LastPullDevice        string
+	LastPullAt            string
+	Paused                bool
+	SubmoduleWarningShown bool
 }
 
 func WriteLedger(repoPath string, ledger Ledger) (string, error) {
@@ -32,6 +33,7 @@ queued_bundles = %s
 last_pull_device = %q
 last_pull_at = %q
 paused = %t
+submodule_warning_shown = %t
 `,
 		ledger.SyncedHead,
 		ledger.PreviousSyncedHead,
@@ -41,6 +43,7 @@ paused = %t
 		ledger.LastPullDevice,
 		ledger.LastPullAt,
 		ledger.Paused,
+		ledger.SubmoduleWarningShown,
 	)
 	return config.WriteLocalFile(path, []byte(content), 0o644)
 }
@@ -53,14 +56,15 @@ func ReadLedger(repoPath string) (Ledger, error) {
 	}
 	text := string(content)
 	return Ledger{
-		SyncedHead:         tomlString(text, "synced_head"),
-		PreviousSyncedHead: tomlString(text, "previous_synced_head"),
-		PendingCommits:     tomlArray(text, "pending_commits"),
-		DisposedCommits:    tomlArray(text, "disposed_commits"),
-		QueuedBundles:      tomlArray(text, "queued_bundles"),
-		LastPullDevice:     tomlString(text, "last_pull_device"),
-		LastPullAt:         tomlString(text, "last_pull_at"),
-		Paused:             strings.Contains(text, "paused = true"),
+		SyncedHead:            tomlString(text, "synced_head"),
+		PreviousSyncedHead:    tomlString(text, "previous_synced_head"),
+		PendingCommits:        tomlArray(text, "pending_commits"),
+		DisposedCommits:       tomlArray(text, "disposed_commits"),
+		QueuedBundles:         tomlArray(text, "queued_bundles"),
+		LastPullDevice:        tomlString(text, "last_pull_device"),
+		LastPullAt:            tomlString(text, "last_pull_at"),
+		Paused:                strings.Contains(text, "paused = true"),
+		SubmoduleWarningShown: strings.Contains(text, "submodule_warning_shown = true"),
 	}, nil
 }
 

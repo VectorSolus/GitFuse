@@ -22,6 +22,7 @@ type syncOptions struct {
 }
 
 var syncOpts syncOptions
+var submoduleWarningPrinted bool
 
 var syncCmd = &cobra.Command{
 	Use:   "sync [range]",
@@ -79,6 +80,9 @@ func runSync(ctx context.Context, cmd *cobra.Command, opts syncOptions, commitRa
 	if err != nil {
 		return err
 	}
+	if err := printSubmoduleWarningOnce(cmd, repoPath, bundle.Submodules, &ledger); err != nil {
+		return err
+	}
 	if opts.dryRun {
 		fmt.Fprintf(cmd.OutOrStdout(), "Dry run: %d commit(s) ready to sync.\n", len(bundle.Manifest.Commits))
 		if commitRange != "" {
@@ -129,6 +133,21 @@ func runSync(ctx context.Context, cmd *cobra.Command, opts syncOptions, commitRa
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Synced %d commit(s).\n", len(bundle.Manifest.Commits))
 	return nil
+}
+
+func printSubmoduleWarningOnce(cmd *cobra.Command, repoPath string, submodules []gfgit.BundleSubmodule, ledger *workspace.Ledger) error {
+	if len(submodules) == 0 || submoduleWarningPrinted || ledger.SubmoduleWarningShown {
+		return nil
+	}
+	submoduleWarningPrinted = true
+	ledger.SubmoduleWarningShown = true
+	fmt.Fprintf(
+		cmd.OutOrStdout(),
+		"Warning: Submodules detected at %s. gitfuse sync records gitlink references only and never syncs submodule contents.\n",
+		submodules[0].Path,
+	)
+	_, err := workspace.WriteLedger(repoPath, *ledger)
+	return err
 }
 
 func currentHead(repoPath string) (string, error) {
