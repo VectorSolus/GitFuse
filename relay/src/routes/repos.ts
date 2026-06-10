@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import type { CreateRepoRequest } from "@gitfuse/types/relay";
 import type { AuthenticatedDevice } from "../db/queries";
-import { createRepo, deleteRepo, listRepos } from "../db/queries";
-import { badRequest, notFound } from "../errors/responses";
+import { checkRepoLimit, createRepo, deleteRepo, listRepos } from "../db/queries";
+import { badRequest, notFound, overLimit } from "../errors/responses";
 
 type Variables = {
   auth: AuthenticatedDevice;
@@ -20,6 +20,9 @@ repoRoutes.post("/", async (c) => {
   const auth = c.get("auth");
   const body = await c.req.json<Partial<CreateRepoRequest>>().catch(() => null);
   if (!body?.rootSha || !body.displayName) return badRequest(c, "rootSha and displayName are required.");
+
+  const limit = await checkRepoLimit(auth.userId);
+  if (!limit.ok) return overLimit(c, limit.limit, limit.current, limit.max);
 
   const repository = await createRepo(auth.userId, {
     rootSha: body.rootSha,

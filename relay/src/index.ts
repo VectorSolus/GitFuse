@@ -1,7 +1,7 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import type { AuthenticatedDevice } from "./db/queries";
-import { authenticateToken, getUsage } from "./db/queries";
+import { authenticateToken, getUsage, seedLimitScenario } from "./db/queries";
 import { sessionExpired } from "./errors/responses";
 import { authRoutes } from "./routes/auth";
 import { bundleRoutes } from "./routes/bundles";
@@ -15,6 +15,20 @@ type Variables = {
 export const app = new Hono<{ Variables: Variables }>();
 
 app.get("/health", (c) => c.json({ ok: true, service: "gitfuse-relay" }));
+
+app.post("/__test/limits/seed", async (c) => {
+  if (process.env.NODE_ENV === "production") return c.json({ error: "not_found" }, 404);
+  const body = await c.req.json().catch(() => ({}));
+  return c.json(
+    await seedLimitScenario({
+      username: String(body.username ?? `limit-${Date.now()}`),
+      tier: body.tier,
+      repoCount: Number(body.repoCount ?? 0),
+      deviceCount: Number(body.deviceCount ?? 1),
+      storageBytes: Number(body.storageBytes ?? 0)
+    })
+  );
+});
 
 app.route("/v1/auth", authRoutes);
 

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import type { AuthenticatedDevice } from "../db/queries";
 import {
+  checkBundleUploadLimits,
   createBundle,
   findBundle,
   findRepoByRelayEntry,
@@ -10,7 +11,7 @@ import {
   updateBundleStatus
 } from "../db/queries";
 import { deleteBundleObject, getBundleObject, putBundleObject } from "../storage/r2";
-import { badRequest, conflict, notFound } from "../errors/responses";
+import { badRequest, conflict, notFound, overLimit } from "../errors/responses";
 
 type Variables = {
   auth: AuthenticatedDevice;
@@ -46,6 +47,9 @@ bundleRoutes.post("/upload", async (c) => {
   if (!relayEntryId || !bundleHash || !commitCount || !sizeBytes || !(file instanceof File)) {
     return badRequest(c, "relayEntryId, bundleHash, commitCount, sizeBytes, and bundle file are required.");
   }
+
+  const limit = await checkBundleUploadLimits(auth.userId, sizeBytes);
+  if (!limit.ok) return overLimit(c, limit.limit, limit.current, limit.max);
 
   const locked = await withUploadLock(relayEntryId, async () => {
     const repository = await findRepoByRelayEntry(auth.userId, relayEntryId);

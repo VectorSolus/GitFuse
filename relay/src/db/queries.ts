@@ -7,7 +7,7 @@ import type {
   SyncEvent,
   SyncEventType
 } from "@gitfuse/types/workspace";
-import type { PlanTier, UsageSummary } from "@gitfuse/types/billing";
+import { TIER_LIMITS, type LimitName, type PlanTier, type UsageSummary } from "@gitfuse/types/billing";
 
 export type AuthenticatedDevice = {
   tokenHash: string;
@@ -47,6 +47,57 @@ function nowIso() {
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
+}
+
+function tierForUser(userId: string) {
+  return users.get(userId)?.tier ?? "free";
+}
+
+function numericLimit(value: number | "unlimited") {
+  return value === "unlimited" ? null : value;
+}
+
+function userRepositoryIds(userId: string) {
+  return new Set([...repositories.values()].filter((repo) => repo.userId === userId).map((repo) => repo.id));
+}
+
+function userStorageBytes(userId: string) {
+  const repositoryIds = userRepositoryIds(userId);
+  return [...bundles.values()]
+    .filter((bundle) => repositoryIds.has(bundle.repositoryId) && bundle.status === "active")
+    .reduce((total, bundle) => total + bundle.sizeBytes, 0);
+}
+
+export type LimitCheck = { ok: true } | { ok: false; limit: LimitName; current: number; max: number };
+
+export async function checkRepoLimit(userId: string): Promise<LimitCheck> {
+  const max = numericLimit(TIER_LIMITS[tierForUser(userId)].repos);
+  const current = [...repositories.values()].filter((repo) => repo.userId === userId).length;
+  if (max !== null && current >= max) return { ok: false, limit: "repos", current: current + 1, max };
+  return { ok: true };
+}
+
+export async function checkDeviceLimitForApproval(githubUsername: string): Promise<LimitCheck> {
+  const user = [...users.values()].find((record) => record.githubUsername === githubUsername);
+  if (!user) return { ok: true };
+  const max = numericLimit(TIER_LIMITS[user.tier].devices);
+  const current = [...devices.values()].filter((device) => device.userId === user.id && device.revokedAt === null).length;
+  if (max !== null && current >= max) return { ok: false, limit: "devices", current: current + 1, max };
+  return { ok: true };
+}
+
+export async function checkBundleUploadLimits(userId: string, sizeBytes: number): Promise<LimitCheck> {
+  const limits = TIER_LIMITS[tierForUser(userId)];
+  if (sizeBytes > limits.bundleSizeBytes) {
+    return { ok: false, limit: "bundle_size", current: sizeBytes, max: limits.bundleSizeBytes };
+  }
+
+  const currentStorage = userStorageBytes(userId);
+  if (currentStorage + sizeBytes > limits.storageTotalBytes) {
+    return { ok: false, limit: "storage", current: currentStorage + sizeBytes, max: limits.storageTotalBytes };
+  }
+
+  return { ok: true };
 }
 
 function relayEntryId(displayName: string) {
@@ -221,28 +272,101 @@ export async function revokeDevice(userId: string, deviceId: string) {
 }
 
 export async function getUsage(userId: string): Promise<UsageSummary> {
-  const user = users.get(userId);
   const userRepos = await listRepos(userId);
   const userDevices = await listDevices(userId);
-  const repositoryIds = new Set(userRepos.map((repo) => repo.id));
-  const storageBytes = [...bundles.values()]
-    .filter((bundle) => repositoryIds.has(bundle.repositoryId) && bundle.status === "active")
-    .reduce((total, bundle) => total + bundle.sizeBytes, 0);
-
-  const tier = user?.tier ?? "free";
-  const maxRepos = tier === "free" ? 5 : "unlimited";
-  const maxDevices = tier === "free" ? 3 : "unlimited";
+  const storageBytes = userStorageBytes(userId);
+  const tier = tierForUser(userId);
+  const limits = TIER_LIMITS[tier];
   return {
     tier,
-    repos: { current: userRepos.length, max: maxRepos },
-    devices: { current: userDevices.filter((device) => device.revokedAt === null).length, max: maxDevices },
+    repos: { current: userRepos.length, max: limits.repos },
+    devices: { current: userDevices.filter((device) => device.revokedAt === null).length, max: limits.devices },
     storage: {
       currentBytes: storageBytes,
-      maxBytes: tier === "free" ? 500 * 1024 * 1024 : 50 * 1024 * 1024 * 1024
+      maxBytes: limits.storageTotalBytes
     },
     bundleSize: {
-      maxBytes: tier === "free" ? 50 * 1024 * 1024 : 500 * 1024 * 1024
+      maxBytes: limits.bundleSizeBytes
     },
-    historyDays: tier === "free" ? 30 : 365
+    historyDays: limits.historyDays
   };
+}
+
+export async function seedLimitScenario(input: {
+  username: string;
+  tier?: PlanTier;
+  repoCount?: number;
+  deviceCount?: number;
+  storageBytes?: number;
+}) {
+  const user: UserRecord = {
+    id: randomUUID(),
+    githubUsername: input.username,
+    email: `${input.username}@example.com`,
+    tier: input.tier ?? "free"
+  };
+  users.set(user.id, user);
+
+  const token = `gf_${randomBytes(32).toString("base64url")}`;
+  const primaryDevice: Device & { tokenHash: string; token: string } = {
+    id: randomUUID(),
+    userId: user.id,
+    name: `${input.username}-primary`,
+    tokenHash: hashToken(token),
+    token,
+    lastActiveAt: nowIso(),
+    createdAt: nowIso(),
+    revokedAt: null
+  };
+  devices.set(primaryDevice.id, primaryDevice);
+
+  for (let i = 1; i < (input.deviceCount ?? 1); i += 1) {
+    const deviceToken = `gf_${randomBytes(32).toString("base64url")}`;
+    const deviceId = randomUUID();
+    devices.set(deviceId, {
+      id: deviceId,
+      userId: user.id,
+      name: `${input.username}-device-${i + 1}`,
+      tokenHash: hashToken(deviceToken),
+      token: deviceToken,
+      lastActiveAt: nowIso(),
+      createdAt: nowIso(),
+      revokedAt: null
+    });
+  }
+
+  const createdRepos: Repository[] = [];
+  for (let i = 0; i < (input.repoCount ?? 0); i += 1) {
+    const repo: Repository = {
+      id: randomUUID(),
+      userId: user.id,
+      rootSha: `${input.username}-root-${i}`,
+      displayName: `${input.username}-repo-${i}`,
+      remoteUrl: null,
+      relayEntryId: `${input.username}-entry-${i}`,
+      createdAt: nowIso(),
+      lastSyncedAt: null
+    };
+    repositories.set(repo.id, repo);
+    createdRepos.push(repo);
+  }
+
+  if (input.storageBytes && createdRepos[0]) {
+    const bundle: Bundle = {
+      id: randomUUID(),
+      repositoryId: createdRepos[0].id,
+      deviceId: primaryDevice.id,
+      bundleHash: `${input.username}-seed-bundle`,
+      commitCount: 1,
+      sizeBytes: input.storageBytes,
+      r2Key: `${user.id}/${createdRepos[0].relayEntryId}/seed.bundle.enc`,
+      status: "active",
+      parentBundleId: null,
+      createdAt: nowIso(),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    };
+    bundles.set(bundle.id, bundle);
+  }
+
+  return { token, userId: user.id, deviceId: primaryDevice.id, relayEntryId: createdRepos[0]?.relayEntryId ?? null };
 }
