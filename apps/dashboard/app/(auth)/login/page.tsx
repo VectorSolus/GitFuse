@@ -1,26 +1,314 @@
-import { redirect } from "next/navigation";
+"use client";
 
-import { auth, signIn } from "../../../lib/auth";
+import dynamic from "next/dynamic";
+import { ArrowRight, Mail, ShieldCheck } from "lucide-react";
+import { useMemo, useState } from "react";
+import type { ComponentType, FormEvent } from "react";
 
-export default async function LoginPage() {
-  const session = await auth();
-  if (session?.user) redirect("/dashboard");
+const SoftAurora = dynamic(() => import("@/components/effects/SoftAurora"), {
+  ssr: false,
+}) as ComponentType<any>;
+
+type LoginStep = "email" | "password" | "otp";
+
+export default function LoginPage() {
+  const [step, setStep] = useState<LoginStep>("email");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const maskedEmail = useMemo(() => {
+    const [name, domain] = email.split("@");
+
+    if (!name || !domain) return email;
+
+    const visibleName =
+      name.length <= 2 ? name : `${name.slice(0, 2)}${"*".repeat(4)}`;
+
+    return `${visibleName}@${domain}`;
+  }, [email]);
+
+  function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!email.trim()) return;
+
+    if (step === "email") {
+      setStep("password");
+      return;
+    }
+
+    if (step === "password" && password.trim().length >= 8) {
+      setStep("otp");
+    }
+  }
 
   return (
-    <main className="login-page">
-      <section className="login-panel">
-        <p className="eyebrow">gitfuse dashboard</p>
-        <h1>Sign in with GitHub</h1>
-        <p className="copy">Manage relay entries, devices, usage, and billing for encrypted committed-git sync.</p>
-        <form
-          action={async () => {
-            "use server";
-            await signIn("github", { redirectTo: "/dashboard" });
-          }}
-        >
-          <button type="submit">Continue with GitHub</button>
-        </form>
-      </section>
+    <main className="gf-login-page">
+      <div className="gf-bg">
+        <div className="gf-soft-aurora">
+          <SoftAurora
+            speed={0.6}
+            scale={1.5}
+            brightness={1}
+            color1="#0890f2"
+            color2="#1f54dc"
+            noiseFrequency={2.5}
+            noiseAmplitude={1}
+            bandHeight={0.5}
+            bandSpread={1}
+            octaveDecay={0.1}
+            layerOffset={0}
+            colorSpeed={1}
+            enableMouseInteraction
+            mouseInfluence={0.25}
+          />
+        </div>
+
+        <div className="gf-bg-grid" />
+        <div className="gf-bg-overlay" />
+      </div>
+
+      <header className="gf-login-header">
+        <a href="/" className="gf-logo">
+          Git<span>Fuse</span>
+        </a>
+
+        <a href="/" className="gf-login-close" aria-label="Close and return home">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            className="gf-login-close-icon"
+          >
+            <path
+              d="M6.4 6.4L17.6 17.6M17.6 6.4L6.4 17.6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </a>
+      </header>
+
+      {step === "otp" ? (
+        <section className="gf-otp-shell">
+          <div className="gf-otp-card">
+            <div className="gf-otp-icon">
+              <ShieldCheck size={26} />
+            </div>
+
+            <p className="gf-login-eyebrow">Verify your account</p>
+
+            <h1>Enter the OTP sent to your email.</h1>
+
+            <p className="gf-otp-copy">
+              We sent a one-time verification code to{" "}
+              <strong>{maskedEmail}</strong>. Enter it below to continue to your
+              GitFuse workspace.
+            </p>
+
+            <div className="gf-otp-inputs" aria-label="OTP input placeholders">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <input
+                  key={index}
+                  inputMode="numeric"
+                  maxLength={1}
+                  aria-label={`OTP digit ${index + 1}`}
+                />
+              ))}
+            </div>
+
+            <button type="button" className="gf-login-primary-wide">
+              Verify and continue
+            </button>
+
+            <button
+              type="button"
+              className="gf-login-muted-button"
+              onClick={() => setStep("password")}
+            >
+              Change email or password
+            </button>
+          </div>
+        </section>
+      ) : (
+        <section className="gf-login-shell">
+          <div className="gf-login-copy">
+            <div className="gf-pill">
+              <span className="gf-pill-dot" />
+              Private commit sync for developers
+            </div>
+
+            <h1>Start your GitFuse workspace.</h1>
+
+            <p>
+              Create your account with email first. GitHub and Google sign-in
+              are shown as frontend placeholders for now and can be wired to the
+              backend later.
+            </p>
+
+            <div className="gf-login-terminal">
+              <div className="gf-terminal-top">
+                <div>
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <p>after account setup</p>
+              </div>
+
+              <code>
+                <span>
+                  <em>$</em> gitfuse auth login
+                </span>
+                <span className="gf-terminal-ok">✓ email verified</span>
+                <span className="gf-terminal-ok">✓ device registered</span>
+                <span className="gf-terminal-ok">✓ workspace ready</span>
+              </code>
+            </div>
+          </div>
+
+          <div className="gf-login-card">
+            <div className="gf-login-card-head">
+              <p className="gf-login-eyebrow">Welcome to GitFuse</p>
+              <h2>Sign in or create account</h2>
+              <span>
+                Enter your email to begin. You will set a password and verify
+                with OTP before entering your dashboard.
+              </span>
+            </div>
+
+            <form className="gf-email-form" onSubmit={handleEmailSubmit}>
+              <label htmlFor="email">Email address</label>
+
+              <div className="gf-email-row">
+                <div className="gf-email-input-wrap">
+                  <Mail size={18} />
+                  <input
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    autoComplete="email"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="gf-arrow-button"
+                  aria-label="Continue with email"
+                >
+                  <ArrowRight size={20} />
+                </button>
+              </div>
+
+              {step === "password" ? (
+                <div className="gf-password-step">
+                  <label htmlFor="password">Create new password</label>
+
+                  <div className="gf-password-row">
+                    <input
+                      id="password"
+                      type="password"
+                      placeholder="Minimum 8 characters"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      autoComplete="new-password"
+                      minLength={8}
+                      required
+                    />
+
+                    <button
+                      type="submit"
+                      className="gf-arrow-button"
+                      aria-label="Continue to OTP verification"
+                    >
+                      <ArrowRight size={20} />
+                    </button>
+                  </div>
+
+                  <p>
+                    Use at least 8 characters. The next screen will verify your
+                    email with an OTP.
+                  </p>
+                </div>
+              ) : null}
+            </form>
+
+            <div className="gf-login-divider">
+              <span />
+              <p>or continue with</p>
+              <span />
+            </div>
+
+            <div className="gf-social-grid">
+              <button type="button" className="gf-social-button">
+                <GoogleIcon />
+                Sign in with Google
+              </button>
+
+              <button type="button" className="gf-social-button">
+                <GitHubIcon />
+                Sign in with GitHub
+              </button>
+
+              <button type="button" className="gf-social-button gf-social-button-wide">
+                <Mail size={19} />
+                Use preferred sign-in
+              </button>
+            </div>
+
+            <p className="gf-login-note">
+              Social sign-in buttons are frontend placeholders for now. Email
+              setup and OTP verification are ready as the first UI flow.
+            </p>
+          </div>
+        </section>
+      )}
     </main>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="gf-google-icon"
+    >
+      <path
+        fill="#EA4335"
+        d="M12 10.2v3.9h5.5c-.24 1.25-.98 2.31-2.08 3.02v2.51h3.36C20.74 17.82 22 15.16 22 12c0-.66-.06-1.29-.17-1.9H12Z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 22c2.8 0 5.15-.92 6.87-2.49l-3.36-2.51c-.93.62-2.12.99-3.51.99-2.7 0-4.99-1.82-5.81-4.27H2.72v2.59A10 10 0 0 0 12 22Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M6.19 13.72A6.01 6.01 0 0 1 5.88 12c0-.6.11-1.18.31-1.72V7.69H2.72A10 10 0 0 0 2 12c0 1.61.38 3.13 1.06 4.31l3.13-2.59Z"
+      />
+      <path
+        fill="#4285F4"
+        d="M12 6.01c1.52 0 2.89.52 3.96 1.55l2.98-2.98C17.14 2.91 14.8 2 12 2a10 10 0 0 0-9.28 5.69l3.47 2.59C7.01 7.83 9.3 6.01 12 6.01Z"
+      />
+    </svg>
+  );
+}
+
+function GitHubIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="gf-github-icon"
+    >
+      <path
+        fill="currentColor"
+        d="M12 0C5.37 0 0 5.5 0 12.3c0 5.44 3.44 10.05 8.2 11.68.6.12.82-.27.82-.59 0-.29-.01-1.06-.02-2.08-3.34.74-4.04-1.65-4.04-1.65-.55-1.42-1.34-1.8-1.34-1.8-1.09-.76.08-.75.08-.75 1.2.09 1.84 1.27 1.84 1.27 1.07 1.88 2.81 1.34 3.5 1.02.11-.79.42-1.34.76-1.64-2.67-.31-5.47-1.37-5.47-6.1 0-1.35.47-2.45 1.24-3.31-.12-.31-.54-1.57.12-3.26 0 0 1.01-.33 3.3 1.27A11.2 11.2 0 0 1 12 5.95c1.02 0 2.05.14 3.01.41 2.29-1.6 3.3-1.27 3.3-1.27.66 1.69.24 2.95.12 3.26.77.86 1.24 1.96 1.24 3.31 0 4.74-2.81 5.78-5.49 6.09.43.38.81 1.12.81 2.26 0 1.63-.01 2.95-.01 3.35 0 .33.22.72.83.59A12.25 12.25 0 0 0 24 12.3C24 5.5 18.63 0 12 0Z"
+      />
+    </svg>
   );
 }
