@@ -34,7 +34,7 @@ type NavItem = {
   label: string;
   href: string;
   icon: IconName;
-  external?: boolean;
+  newTab?: boolean;
 };
 
 const navItems: NavItem[] = [
@@ -72,7 +72,7 @@ const navItems: NavItem[] = [
     label: "Docs",
     href: "/docs",
     icon: "docs",
-    external: true,
+    newTab: true,
   },
 ];
 
@@ -232,19 +232,21 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
         </div>
 
         <nav className="gf-dash-nav" aria-label="Dashboard navigation">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`gf-dash-nav-item ${
-                !item.external && isActive(item.href) ? "active" : ""
-              }`}
-              title={collapsed ? item.label : undefined}
-            >
-              <Icon name={item.icon} />
-              <span className="gf-dash-label">{item.label}</span>
-            </Link>
-          ))}
+            {navItems.map((item) => (
+                <Link
+                key={item.href}
+                href={item.href}
+                target={item.newTab ? "_blank" : undefined}
+                rel={item.newTab ? "noopener noreferrer" : undefined}
+                className={`gf-dash-nav-item ${
+                    !item.newTab && isActive(item.href) ? "active" : ""
+                }`}
+                title={collapsed ? item.label : undefined}
+                >
+                <Icon name={item.icon} />
+                <span className="gf-dash-label">{item.label}</span>
+                </Link>
+            ))}
         </nav>
 
         <div className="gf-dash-sidebar-bottom" ref={profileMenuRef}>
