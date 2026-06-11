@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
+import { AppAuroraBackground } from "@/components/effects/AppAuroraBackground";
 
 export const metadata: Metadata = {
   title: "GitFuse — Your commits, everywhere",
@@ -16,7 +17,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body>
-        <Providers>{children}</Providers>
+        <AppAuroraBackground />
+
+        <div className="gf-app-content-layer">
+          <Providers>{children}</Providers>
+        </div>
       </body>
     </html>
   );
