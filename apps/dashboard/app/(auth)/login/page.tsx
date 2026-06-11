@@ -1,24 +1,37 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { ArrowRight, Mail, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
-import type { ComponentType, FormEvent } from "react";
 import { signIn } from "next-auth/react";
+import { ArrowRight, Mail, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ComponentType, FormEvent } from "react";
 
 const SoftAurora = dynamic(() => import("@/components/effects/SoftAurora"), {
   ssr: false,
 }) as ComponentType<any>;
 
 type LoginStep = "email" | "password" | "otp";
+type OAuthProvider = "google" | "github";
 
 export default function LoginPage() {
   const [step, setStep] = useState<LoginStep>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [otpDigits, setOtpDigits] = useState(Array<string>(6).fill(""));
-  const [pending, setPending] = useState(false);
-  const [feedback, setFeedback] = useState("");
+  const emailInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const emailFromHome = params.get("email");
+
+    if (!emailFromHome) return;
+
+    const decodedEmail = emailFromHome.trim();
+
+    if (!decodedEmail) return;
+
+    setEmail(decodedEmail);
+    setStep("password");
+  }, []);
 
   const maskedEmail = useMemo(() => {
     const [name, domain] = email.split("@");
@@ -31,78 +44,39 @@ export default function LoginPage() {
     return `${visibleName}@${domain}`;
   }, [email]);
 
-  async function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setFeedback("");
+  function openOAuth(provider: OAuthProvider) {
+    void signIn(provider, {
+      callbackUrl: "/dashboard",
+    });
+  }
 
-    if (!email.trim()) return;
+  function handlePreferredSignIn() {
+    setStep("email");
+
+    window.setTimeout(() => {
+      emailInputRef.current?.focus();
+    }, 0);
+  }
+
+  function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) return;
 
     if (step === "email") {
+      setEmail(trimmedEmail);
       setStep("password");
       return;
     }
 
-    if (step === "password" && password.trim().length >= 8) {
-      setPending(true);
-      try {
-        const response = await fetch("/api/auth/otp/request", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email, password })
-        });
+    if (step === "password") {
+      if (password.trim().length < 8) return;
 
-        if (!response.ok) {
-          const error = (await response.json().catch(() => null)) as { error?: string } | null;
-          throw new Error(error?.error ?? "OTP_REQUEST_FAILED");
-        }
-
-        setStep("otp");
-        setFeedback("OTP sent. Check your email for the 6-digit code.");
-      } catch (error) {
-        setFeedback(error instanceof Error ? error.message : "OTP_REQUEST_FAILED");
-      } finally {
-        setPending(false);
-      }
+      setEmail(trimmedEmail);
+      setStep("otp");
     }
-  }
-
-  function openOAuth(provider: "github" | "google") {
-    window.open(`/api/auth/signin/${provider}?callbackUrl=/dashboard`, "_blank", "noopener,noreferrer");
-  }
-
-  function updateOtpDigit(index: number, value: string) {
-    const nextValue = value.replace(/\D/g, "").slice(-1);
-    const nextDigits = [...otpDigits];
-    nextDigits[index] = nextValue;
-    setOtpDigits(nextDigits);
-
-    if (nextValue && index < 5) {
-      const nextInput = document.querySelector<HTMLInputElement>(`[data-otp-index="${index + 1}"]`);
-      nextInput?.focus();
-    }
-  }
-
-  async function verifyOtp() {
-    const otp = otpDigits.join("");
-    if (otp.length !== 6 || pending) return;
-
-    setPending(true);
-    setFeedback("");
-
-    const result = await signIn("credentials", {
-      email,
-      otp,
-      callbackUrl: "/dashboard",
-      redirect: false
-    });
-
-    if (result?.error) {
-      setFeedback("Invalid or expired OTP. Request a new code and try again.");
-      setPending(false);
-      return;
-    }
-
-    window.location.href = result?.url ?? "/dashboard";
   }
 
   return (
@@ -176,16 +150,13 @@ export default function LoginPage() {
                   key={index}
                   inputMode="numeric"
                   maxLength={1}
-                  value={otpDigits[index]}
-                  data-otp-index={index}
-                  onChange={(event) => updateOtpDigit(index, event.target.value)}
                   aria-label={`OTP digit ${index + 1}`}
                 />
               ))}
             </div>
 
-            <button type="button" className="gf-login-primary-wide" onClick={verifyOtp} disabled={pending}>
-              {pending ? "Verifying..." : "Verify and continue"}
+            <button type="button" className="gf-login-primary-wide">
+              Verify and continue
             </button>
 
             <button
@@ -209,8 +180,8 @@ export default function LoginPage() {
 
             <p>
               Create your account with email first. GitHub and Google sign-in
-              are shown as frontend placeholders for now and can be wired to the
-              backend later.
+              can now continue through NextAuth. Email OTP remains available as
+              the first custom account flow.
             </p>
 
             <div className="gf-login-terminal">
@@ -247,31 +218,35 @@ export default function LoginPage() {
             <form className="gf-email-form" onSubmit={handleEmailSubmit}>
               <label htmlFor="email">Email address</label>
 
-              <div className={`gf-email-row ${step !== "email" ? "gf-email-row-locked" : ""}`}>
-  <div className="gf-email-input-wrap">
-    <Mail size={18} />
-    <input
-      id="email"
-      type="email"
-      placeholder="you@example.com"
-      value={email}
-      onChange={(event) => setEmail(event.target.value)}
-      autoComplete="email"
-      readOnly={step !== "email"}
-      required
-    />
-  </div>
+              <div
+                className={`gf-email-row ${
+                  step !== "email" ? "gf-email-row-locked" : ""
+                }`}
+              >
+                <div className="gf-email-input-wrap">
+                  <Mail size={18} />
+                  <input
+                    ref={emailInputRef}
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    autoComplete="email"
+                    required
+                  />
+                </div>
 
-  {step === "email" ? (
-    <button
-      type="submit"
-      className="gf-arrow-button"
-      aria-label="Continue with email"
-    >
-      <ArrowRight size={20} />
-    </button>
-  ) : null}
-</div>
+                {step === "email" ? (
+                  <button
+                    type="submit"
+                    className="gf-arrow-button"
+                    aria-label="Continue with email"
+                  >
+                    <ArrowRight size={20} />
+                  </button>
+                ) : null}
+              </div>
 
               {step === "password" ? (
                 <div className="gf-password-step">
@@ -293,15 +268,15 @@ export default function LoginPage() {
                       type="submit"
                       className="gf-arrow-button"
                       aria-label="Continue to OTP verification"
-                      disabled={pending}
                     >
                       <ArrowRight size={20} />
                     </button>
                   </div>
 
                   <p>
-                    Use at least 8 characters. The next screen will verify your
-                    email with an OTP.
+                    You can still edit the email above. Use at least 8
+                    characters. The next screen will verify your email with an
+                    OTP.
                   </p>
                 </div>
               ) : null}
@@ -314,25 +289,38 @@ export default function LoginPage() {
             </div>
 
             <div className="gf-social-grid">
-              <button type="button" className="gf-social-button" onClick={() => openOAuth("google")}>
+              <button
+                type="button"
+                className="gf-social-button"
+                onClick={() => openOAuth("google")}
+              >
                 <GoogleIcon />
                 Sign in with Google
               </button>
 
-              <button type="button" className="gf-social-button" onClick={() => openOAuth("github")}>
+              <button
+                type="button"
+                className="gf-social-button"
+                onClick={() => openOAuth("github")}
+              >
                 <GitHubIcon />
                 Sign in with GitHub
               </button>
 
-              <button type="button" className="gf-social-button gf-social-button-wide">
+              <button
+                type="button"
+                className="gf-social-button gf-social-button-wide"
+                onClick={handlePreferredSignIn}
+              >
                 <Mail size={19} />
                 Use preferred sign-in
               </button>
             </div>
 
             <p className="gf-login-note">
-              {feedback ||
-                "Email setup, OTP verification, GitHub, and Google sign-in are connected to the backend."}
+              Google and GitHub use your configured NextAuth providers. Email
+              setup and OTP verification continue through the custom GitFuse
+              account flow.
             </p>
           </div>
         </section>
@@ -343,11 +331,7 @@ export default function LoginPage() {
 
 function GoogleIcon() {
   return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      className="gf-google-icon"
-    >
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="gf-google-icon">
       <path
         fill="#EA4335"
         d="M12 10.2v3.9h5.5c-.24 1.25-.98 2.31-2.08 3.02v2.51h3.36C20.74 17.82 22 15.16 22 12c0-.66-.06-1.29-.17-1.9H12Z"
@@ -370,11 +354,7 @@ function GoogleIcon() {
 
 function GitHubIcon() {
   return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      className="gf-github-icon"
-    >
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="gf-github-icon">
       <path
         fill="currentColor"
         d="M12 0C5.37 0 0 5.5 0 12.3c0 5.44 3.44 10.05 8.2 11.68.6.12.82-.27.82-.59 0-.29-.01-1.06-.02-2.08-3.34.74-4.04-1.65-4.04-1.65-.55-1.42-1.34-1.8-1.34-1.8-1.09-.76.08-.75.08-.75 1.2.09 1.84 1.27 1.84 1.27 1.07 1.88 2.81 1.34 3.5 1.02.11-.79.42-1.34.76-1.64-2.67-.31-5.47-1.37-5.47-6.1 0-1.35.47-2.45 1.24-3.31-.12-.31-.54-1.57.12-3.26 0 0 1.01-.33 3.3 1.27A11.2 11.2 0 0 1 12 5.95c1.02 0 2.05.14 3.01.41 2.29-1.6 3.3-1.27 3.3-1.27.66 1.69.24 2.95.12 3.26.77.86 1.24 1.96 1.24 3.31 0 4.74-2.81 5.78-5.49 6.09.43.38.81 1.12.81 2.26 0 1.63-.01 2.95-.01 3.35 0 .33.22.72.83.59A12.25 12.25 0 0 0 24 12.3C24 5.5 18.63 0 12 0Z"
