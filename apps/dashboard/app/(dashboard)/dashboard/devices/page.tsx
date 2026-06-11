@@ -1,123 +1,220 @@
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+const deviceMetrics = [
+  {
+    label: "Trusted devices",
+    value: "0 / 3",
+    helper: "machines linked to this workspace",
+    tone: "ocean",
+  },
+  {
+    label: "Active sessions",
+    value: "0",
+    helper: "currently authenticated clients",
+    tone: "green",
+  },
+  {
+    label: "Pending approvals",
+    value: "0",
+    helper: "device requests waiting for approval",
+    tone: "violet",
+  },
+];
 
-import { auth } from "../../../../lib/auth";
-import { type DashboardDevice, listDashboardDevices, revokeDashboardDevice } from "../../../../lib/devices";
+const setupSteps = [
+  {
+    title: "Install GitFuse CLI",
+    command: "brew install gitfuse",
+  },
+  {
+    title: "Authenticate this machine",
+    command: "gitfuse auth",
+  },
+  {
+    title: "Verify device trust",
+    command: "gitfuse devices",
+  },
+];
 
-function formatDate(value: string | null) {
-  if (!value) return "-";
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC"
-  }).format(new Date(value));
-}
+const securityItems = [
+  {
+    label: "Device-scoped access",
+    value: "Enabled",
+    helper: "Each machine receives an independent trust record.",
+  },
+  {
+    label: "Relay key encryption",
+    value: "Ready",
+    helper: "Commit bundles remain private during transfer.",
+  },
+  {
+    label: "Session revocation",
+    value: "Available soon",
+    helper: "Revoke access from the dashboard in upcoming releases.",
+  },
+];
 
-function DeviceTable({ devices, account }: { devices: DashboardDevice[]; account: { email?: string | null; username?: string | null } }) {
-  if (devices.length === 0) {
-    return (
-      <section className="repo-empty" aria-label="No devices">
-        <h2>No devices registered</h2>
-        <p>Run gitfuse auth from a machine to register the first device for this account.</p>
-      </section>
-    );
-  }
-
-  async function revokeDevice(formData: FormData) {
-    "use server";
-    const deviceId = String(formData.get("deviceId") ?? "");
-    await revokeDashboardDevice(account, deviceId);
-    revalidatePath("/dashboard/devices");
-  }
-
+export default function DevicesPage() {
   return (
-    <div className="repo-table-wrap">
-      <table className="repo-table device-table">
-        <thead>
-          <tr>
-            <th>Device</th>
-            <th>Status</th>
-            <th>Last active</th>
-            <th>Created</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {devices.map((device) => (
-            <tr key={device.id}>
-              <td>
-                <strong>{device.name}</strong>
-                <code>{device.id}</code>
-              </td>
-              <td>
-                <span className={`repo-state device-state-${device.status}`}>{device.status}</span>
-                {device.revokedAt ? <small>Revoked {formatDate(device.revokedAt)}</small> : null}
-              </td>
-              <td>{formatDate(device.lastActiveAt)}</td>
-              <td>{formatDate(device.createdAt)}</td>
-              <td>
-                {device.status === "active" ? (
-                  <form action={revokeDevice}>
-                    <input type="hidden" name="deviceId" value={device.id} />
-                    <button className="danger-button" type="submit">
-                      Revoke
-                    </button>
-                  </form>
-                ) : (
-                  <span className="muted-action">Revoked</span>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="gf-devices-page">
+      <section className="gf-devices-hero">
+        <div>
+          <p className="gf-dash-eyebrow">Devices</p>
+          <h2>Manage the machines trusted to sync your commits.</h2>
+          <span>
+            Link laptops, desktops, and workstations to your GitFuse workspace.
+            Each device gets its own private sync identity.
+          </span>
+        </div>
+
+        <div className="gf-devices-hero-actions">
+          <button type="button" className="gf-dash-primary-action">
+            Link device
+          </button>
+          <a href="/docs" className="gf-dash-secondary-action">
+            View docs
+          </a>
+        </div>
+      </section>
+
+      <section className="gf-devices-metrics">
+        {deviceMetrics.map((metric) => (
+          <article
+            key={metric.label}
+            className={`gf-device-metric-card gf-device-metric-${metric.tone}`}
+          >
+            <p>{metric.label}</p>
+            <h3>{metric.value}</h3>
+            <span>{metric.helper}</span>
+          </article>
+        ))}
+      </section>
+
+      <section className="gf-devices-grid">
+        <article className="gf-devices-panel gf-devices-list-panel">
+          <div className="gf-devices-panel-header">
+            <div>
+              <p className="gf-dash-eyebrow">Device list</p>
+              <h3>Trusted machines</h3>
+            </div>
+
+            <span className="gf-devices-status-pill">Empty</span>
+          </div>
+
+          <div className="gf-devices-toolbar">
+            <label className="gf-devices-search">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                fill="none"
+              >
+                <circle
+                  cx="11"
+                  cy="11"
+                  r="7"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                />
+                <path
+                  d="M20 20l-3.5-3.5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+
+              <input type="search" placeholder="Search devices..." />
+            </label>
+
+            <select aria-label="Device status filter">
+              <option>All devices</option>
+              <option>Trusted</option>
+              <option>Pending</option>
+              <option>Revoked</option>
+            </select>
+          </div>
+
+          <div className="gf-devices-empty">
+            <div className="gf-devices-empty-icon">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="30"
+                height="30"
+                fill="none"
+              >
+                <rect
+                  x="3"
+                  y="4"
+                  width="13"
+                  height="10"
+                  rx="2"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                />
+                <rect
+                  x="17"
+                  y="8"
+                  width="4"
+                  height="12"
+                  rx="1.5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                />
+                <path
+                  d="M7 20h6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M10 14v6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
+
+            <h4>No devices linked yet</h4>
+            <p>
+              Run <code>gitfuse auth</code> on a machine to create its trusted
+              device identity and connect it to this workspace.
+            </p>
+
+            <div className="gf-devices-command-list">
+              {setupSteps.map((step) => (
+                <div key={step.command}>
+                  <span>{step.title}</span>
+                  <code>{step.command}</code>
+                </div>
+              ))}
+            </div>
+          </div>
+        </article>
+
+        <aside className="gf-devices-panel gf-devices-security-panel">
+          <div className="gf-devices-panel-header">
+            <div>
+              <p className="gf-dash-eyebrow">Security</p>
+              <h3>Device trust model</h3>
+            </div>
+          </div>
+
+          <div className="gf-devices-security-list">
+            {securityItems.map((item) => (
+              <div key={item.label} className="gf-devices-security-item">
+                <div>
+                  <p>{item.label}</p>
+                  <strong>{item.value}</strong>
+                </div>
+
+                <span>{item.helper}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      </section>
     </div>
-  );
-}
-
-export default async function DevicesPage() {
-  const testEmail = process.env.NODE_ENV !== "production" ? process.env.GITFUSE_TEST_DASHBOARD_EMAIL : undefined;
-  const session = testEmail ? null : await auth();
-  if (!testEmail && !session?.user) redirect("/login");
-
-  const account = {
-    email: testEmail ?? session?.user?.email,
-    username: session?.user?.name
-  };
-  const devices = await listDashboardDevices(account, { fixturePath: process.env.GITFUSE_DASHBOARD_DEVICES_FIXTURE });
-  const activeCount = devices.filter((device) => device.status === "active").length;
-  const revokedCount = devices.length - activeCount;
-
-  return (
-    <main className="dashboard-shell">
-      <header className="dashboard-header">
-        <div>
-          <p className="eyebrow">Registered machines</p>
-          <h1>Devices</h1>
-        </div>
-        <p>{activeCount} active</p>
-      </header>
-
-      <section className="repo-summary" aria-label="Device summary">
-        <div>
-          <span>Total devices</span>
-          <strong>{devices.length}</strong>
-        </div>
-        <div>
-          <span>Active</span>
-          <strong>{activeCount}</strong>
-        </div>
-        <div>
-          <span>Revoked</span>
-          <strong>{revokedCount}</strong>
-        </div>
-        <div>
-          <span>Latest activity</span>
-          <strong>{formatDate(devices.find((device) => device.lastActiveAt)?.lastActiveAt ?? null)}</strong>
-        </div>
-      </section>
-
-      <DeviceTable devices={devices} account={account} />
-    </main>
   );
 }

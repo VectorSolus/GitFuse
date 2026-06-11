@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 type DashboardLayoutProps = {
@@ -21,15 +21,20 @@ type IconName =
   | "history"
   | "usage"
   | "billing"
+  | "docs"
   | "settings"
   | "logout"
   | "search"
-  | "bell";
+  | "bell"
+  | "user"
+  | "upgrade"
+  | "chevron";
 
 type NavItem = {
   label: string;
   href: string;
   icon: IconName;
+  external?: boolean;
 };
 
 const navItems: NavItem[] = [
@@ -63,11 +68,37 @@ const navItems: NavItem[] = [
     href: "/dashboard/billing",
     icon: "billing",
   },
+  {
+    label: "Docs",
+    href: "/docs",
+    icon: "docs",
+    external: true,
+  },
 ];
+
+const pageTitles: Record<string, string> = {
+  "/dashboard": "Dashboard",
+  "/dashboard/repos": "Repositories",
+  "/dashboard/devices": "Devices",
+  "/dashboard/history": "History",
+  "/dashboard/usage": "Usage",
+  "/dashboard/billing": "Billing",
+  "/dashboard/settings": "Settings",
+};
 
 export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const pageTitle = useMemo(() => {
+    const matchedPath = Object.keys(pageTitles)
+      .sort((a, b) => b.length - a.length)
+      .find((path) => pathname === path || pathname.startsWith(`${path}/`));
+
+    return matchedPath ? pageTitles[matchedPath] : "Dashboard";
+  }, [pathname]);
 
   const initials = useMemo(() => {
     const cleanName = user.name?.trim() || user.email?.trim() || "GitFuse";
@@ -79,6 +110,30 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
 
     return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   }, [user.email, user.name]);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!profileMenuRef.current) return;
+
+      if (!profileMenuRef.current.contains(event.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setProfileMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
 
   function isActive(href: string) {
     if (href === "/dashboard") {
@@ -105,50 +160,12 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
                 <span className="gf-dash-brand-letter">G</span>
 
                 <svg
-                    className="gf-dash-brand-arrow"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    aria-hidden="true"
-                    >
-                    <rect
-                        x="3.5"
-                        y="4.5"
-                        width="17"
-                        height="15"
-                        rx="4"
-                        stroke="currentColor"
-                        strokeWidth="1.9"
-                    />
-                    <path
-                        d="M9 8.5v7"
-                        stroke="currentColor"
-                        strokeWidth="1.9"
-                        strokeLinecap="round"
-                    />
-                    <path
-                        d="M13 9l3 3-3 3"
-                        stroke="currentColor"
-                        strokeWidth="1.9"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                    />
-                </svg>
-              </span>
-            </button>
-          ) : (
-            <div className="gf-dash-expanded-brand-row">
-                <Link href="/dashboard" className="gf-dash-expanded-brand">
-                    Git<span>Fuse</span>
-                </Link>
-
-            <button
-                type="button"
-                className="gf-dash-sidebar-arrow"
-                onClick={() => setCollapsed(true)}
-                aria-label="Collapse sidebar"
+                  className="gf-dash-brand-arrow"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
                 >
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <rect
+                  <rect
                     x="3.5"
                     y="4.5"
                     width="17"
@@ -156,22 +173,60 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
                     rx="4"
                     stroke="currentColor"
                     strokeWidth="1.9"
-                    />
-                    <path
+                  />
+                  <path
+                    d="M9 8.5v7"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M13 9l3 3-3 3"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+            </button>
+          ) : (
+            <div className="gf-dash-expanded-brand-row">
+              <Link href="/dashboard" className="gf-dash-expanded-brand">
+                Git<span>Fuse</span>
+              </Link>
+
+              <button
+                type="button"
+                className="gf-dash-sidebar-arrow"
+                onClick={() => setCollapsed(true)}
+                aria-label="Collapse sidebar"
+              >
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <rect
+                    x="3.5"
+                    y="4.5"
+                    width="17"
+                    height="15"
+                    rx="4"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                  />
+                  <path
                     d="M15 8.5v7"
                     stroke="currentColor"
                     strokeWidth="1.9"
                     strokeLinecap="round"
-                    />
-                    <path
+                  />
+                  <path
                     d="M11 9l-3 3 3 3"
                     stroke="currentColor"
                     strokeWidth="1.9"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    />
+                  />
                 </svg>
-                </button>
+              </button>
             </div>
           )}
         </div>
@@ -182,7 +237,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
               key={item.href}
               href={item.href}
               className={`gf-dash-nav-item ${
-                isActive(item.href) ? "active" : ""
+                !item.external && isActive(item.href) ? "active" : ""
               }`}
               title={collapsed ? item.label : undefined}
             >
@@ -192,35 +247,91 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
           ))}
         </nav>
 
-        <div className="gf-dash-sidebar-bottom">
-          <Link
-            href="/dashboard/settings"
-            className={`gf-dash-nav-item ${
-              pathname.startsWith("/dashboard/settings") ? "active" : ""
+        <div className="gf-dash-sidebar-bottom" ref={profileMenuRef}>
+          <div
+            className={`gf-profile-menu-shell ${
+              profileMenuOpen ? "is-open" : ""
             }`}
-            title={collapsed ? "Settings" : undefined}
           >
-            <Icon name="settings" />
-            <span className="gf-dash-label">Settings</span>
-          </Link>
+            <button
+              type="button"
+              className="gf-dash-user-card gf-dash-user-button"
+              onClick={() => setProfileMenuOpen((value) => !value)}
+              aria-label="Open profile menu"
+              aria-expanded={profileMenuOpen}
+            >
+              <div className="gf-dash-user-avatar">{initials}</div>
 
-          <button
-            type="button"
-            className="gf-dash-nav-item gf-dash-signout"
-            onClick={() => void signOut({ callbackUrl: "/" })}
-            title={collapsed ? "Sign out" : undefined}
-          >
-            <Icon name="logout" />
-            <span className="gf-dash-label">Sign out</span>
-          </button>
+              <div className="gf-dash-user-meta">
+                <strong>{user.name}</strong>
+                <p>{user.email}</p>
+              </div>
 
-          <div className="gf-dash-user-card">
-            <div className="gf-dash-user-avatar">{initials}</div>
+              <span className="gf-profile-menu-arrow" aria-hidden="true">
+                <Icon name="chevron" />
+              </span>
+            </button>
 
-            <div className="gf-dash-user-meta">
-              <strong>{user.name}</strong>
-              <p>{user.email}</p>
-            </div>
+            {profileMenuOpen ? (
+              <div className="gf-profile-menu" role="menu">
+                <div className="gf-profile-menu-head">
+                  <div className="gf-dash-user-avatar">{initials}</div>
+
+                  <div>
+                    <strong>{user.name}</strong>
+                    <p>{user.email}</p>
+                  </div>
+                </div>
+
+                <div className="gf-profile-menu-list">
+                  <Link
+                    href="/dashboard/settings"
+                    role="menuitem"
+                    onClick={() => setProfileMenuOpen(false)}
+                  >
+                    <Icon name="user" />
+                    <span>Profile</span>
+                  </Link>
+
+                  <Link
+                    href="/dashboard/settings"
+                    role="menuitem"
+                    onClick={() => setProfileMenuOpen(false)}
+                  >
+                    <Icon name="settings" />
+                    <span>Settings</span>
+                  </Link>
+
+                  <Link
+                    href="/dashboard/billing"
+                    role="menuitem"
+                    onClick={() => setProfileMenuOpen(false)}
+                  >
+                    <Icon name="upgrade" />
+                    <span>Upgrade plan</span>
+                  </Link>
+
+                  <Link
+                    href="/dashboard/usage"
+                    role="menuitem"
+                    onClick={() => setProfileMenuOpen(false)}
+                  >
+                    <Icon name="usage" />
+                    <span>Usage</span>
+                  </Link>
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="gf-profile-menu-signout"
+                    onClick={() => void signOut({ callbackUrl: "/" })}
+                  >
+                    <Icon name="logout" />
+                    <span>Sign out</span>
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </aside>
@@ -229,7 +340,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
         <header className="gf-dash-header">
           <div>
             <p>Workspace</p>
-            <h1>GitFuse dashboard</h1>
+            <h1>{pageTitle}</h1>
           </div>
 
           <div className="gf-dash-header-actions">
@@ -245,10 +356,6 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
             >
               <Icon name="bell" />
             </button>
-
-            <Link href="/docs" className="gf-dash-docs-link">
-              Docs
-            </Link>
           </div>
         </header>
 
@@ -332,6 +439,18 @@ const icons = {
     </svg>
   ),
 
+  docs: (
+    <svg {...baseIconProps}>
+      <path
+        d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
+        {...strokeProps}
+      />
+      <path d="M14 3v5h5" {...strokeProps} />
+      <path d="M9 13h6" {...strokeProps} />
+      <path d="M9 17h4" {...strokeProps} />
+    </svg>
+  ),
+
   settings: (
     <svg {...baseIconProps}>
       <path
@@ -367,6 +486,27 @@ const icons = {
         {...strokeProps}
       />
       <path d="M10 21h4" {...strokeProps} />
+    </svg>
+  ),
+
+  user: (
+    <svg {...baseIconProps}>
+      <circle cx="12" cy="8" r="4" {...strokeProps} />
+      <path d="M4 21a8 8 0 0 1 16 0" {...strokeProps} />
+    </svg>
+  ),
+
+  upgrade: (
+    <svg {...baseIconProps}>
+      <path d="M12 19V5" {...strokeProps} />
+      <path d="M6 11l6-6 6 6" {...strokeProps} />
+      <path d="M5 21h14" {...strokeProps} />
+    </svg>
+  ),
+
+  chevron: (
+    <svg {...baseIconProps}>
+      <path d="M6 9l6 6 6-6" {...strokeProps} />
     </svg>
   ),
 };
