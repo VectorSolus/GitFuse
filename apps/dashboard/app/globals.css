@@ -2244,3 +2244,15 @@ select {
     width: 100%;
   }
 }
+
+.gf-email-row-locked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.gf-email-row-locked .gf-email-input-wrap {
+  opacity: 0.82;
+}
+
+.gf-email-row-locked input {
+  cursor: default;
+}

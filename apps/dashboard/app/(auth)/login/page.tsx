@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { ArrowRight, Mail, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ComponentType, FormEvent } from "react";
+import { signIn } from "next-auth/react";
 
 const SoftAurora = dynamic(() => import("@/components/effects/SoftAurora"), {
   ssr: false,
@@ -15,6 +16,9 @@ export default function LoginPage() {
   const [step, setStep] = useState<LoginStep>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otpDigits, setOtpDigits] = useState(Array<string>(6).fill(""));
+  const [pending, setPending] = useState(false);
+  const [feedback, setFeedback] = useState("");
 
   const maskedEmail = useMemo(() => {
     const [name, domain] = email.split("@");
@@ -27,8 +31,9 @@ export default function LoginPage() {
     return `${visibleName}@${domain}`;
   }, [email]);
 
-  function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setFeedback("");
 
     if (!email.trim()) return;
 
@@ -38,8 +43,66 @@ export default function LoginPage() {
     }
 
     if (step === "password" && password.trim().length >= 8) {
-      setStep("otp");
+      setPending(true);
+      try {
+        const response = await fetch("/api/auth/otp/request", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
+
+        if (!response.ok) {
+          const error = (await response.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(error?.error ?? "OTP_REQUEST_FAILED");
+        }
+
+        setStep("otp");
+        setFeedback("OTP sent. Check your email for the 6-digit code.");
+      } catch (error) {
+        setFeedback(error instanceof Error ? error.message : "OTP_REQUEST_FAILED");
+      } finally {
+        setPending(false);
+      }
     }
+  }
+
+  function openOAuth(provider: "github" | "google") {
+    window.open(`/api/auth/signin/${provider}?callbackUrl=/dashboard`, "_blank", "noopener,noreferrer");
+  }
+
+  function updateOtpDigit(index: number, value: string) {
+    const nextValue = value.replace(/\D/g, "").slice(-1);
+    const nextDigits = [...otpDigits];
+    nextDigits[index] = nextValue;
+    setOtpDigits(nextDigits);
+
+    if (nextValue && index < 5) {
+      const nextInput = document.querySelector<HTMLInputElement>(`[data-otp-index="${index + 1}"]`);
+      nextInput?.focus();
+    }
+  }
+
+  async function verifyOtp() {
+    const otp = otpDigits.join("");
+    if (otp.length !== 6 || pending) return;
+
+    setPending(true);
+    setFeedback("");
+
+    const result = await signIn("credentials", {
+      email,
+      otp,
+      callbackUrl: "/dashboard",
+      redirect: false
+    });
+
+    if (result?.error) {
+      setFeedback("Invalid or expired OTP. Request a new code and try again.");
+      setPending(false);
+      return;
+    }
+
+    window.location.href = result?.url ?? "/dashboard";
   }
 
   return (
@@ -113,13 +176,16 @@ export default function LoginPage() {
                   key={index}
                   inputMode="numeric"
                   maxLength={1}
+                  value={otpDigits[index]}
+                  data-otp-index={index}
+                  onChange={(event) => updateOtpDigit(index, event.target.value)}
                   aria-label={`OTP digit ${index + 1}`}
                 />
               ))}
             </div>
 
-            <button type="button" className="gf-login-primary-wide">
-              Verify and continue
+            <button type="button" className="gf-login-primary-wide" onClick={verifyOtp} disabled={pending}>
+              {pending ? "Verifying..." : "Verify and continue"}
             </button>
 
             <button
@@ -181,28 +247,31 @@ export default function LoginPage() {
             <form className="gf-email-form" onSubmit={handleEmailSubmit}>
               <label htmlFor="email">Email address</label>
 
-              <div className="gf-email-row">
-                <div className="gf-email-input-wrap">
-                  <Mail size={18} />
-                  <input
-                    id="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    autoComplete="email"
-                    required
-                  />
-                </div>
+              <div className={`gf-email-row ${step !== "email" ? "gf-email-row-locked" : ""}`}>
+  <div className="gf-email-input-wrap">
+    <Mail size={18} />
+    <input
+      id="email"
+      type="email"
+      placeholder="you@example.com"
+      value={email}
+      onChange={(event) => setEmail(event.target.value)}
+      autoComplete="email"
+      readOnly={step !== "email"}
+      required
+    />
+  </div>
 
-                <button
-                  type="submit"
-                  className="gf-arrow-button"
-                  aria-label="Continue with email"
-                >
-                  <ArrowRight size={20} />
-                </button>
-              </div>
+  {step === "email" ? (
+    <button
+      type="submit"
+      className="gf-arrow-button"
+      aria-label="Continue with email"
+    >
+      <ArrowRight size={20} />
+    </button>
+  ) : null}
+</div>
 
               {step === "password" ? (
                 <div className="gf-password-step">
@@ -224,6 +293,7 @@ export default function LoginPage() {
                       type="submit"
                       className="gf-arrow-button"
                       aria-label="Continue to OTP verification"
+                      disabled={pending}
                     >
                       <ArrowRight size={20} />
                     </button>
@@ -244,12 +314,12 @@ export default function LoginPage() {
             </div>
 
             <div className="gf-social-grid">
-              <button type="button" className="gf-social-button">
+              <button type="button" className="gf-social-button" onClick={() => openOAuth("google")}>
                 <GoogleIcon />
                 Sign in with Google
               </button>
 
-              <button type="button" className="gf-social-button">
+              <button type="button" className="gf-social-button" onClick={() => openOAuth("github")}>
                 <GitHubIcon />
                 Sign in with GitHub
               </button>
@@ -261,8 +331,8 @@ export default function LoginPage() {
             </div>
 
             <p className="gf-login-note">
-              Social sign-in buttons are frontend placeholders for now. Email
-              setup and OTP verification are ready as the first UI flow.
+              {feedback ||
+                "Email setup, OTP verification, GitHub, and Google sign-in are connected to the backend."}
             </p>
           </div>
         </section>
