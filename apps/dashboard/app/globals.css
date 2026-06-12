@@ -6135,3 +6135,832 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Account tier beside profile name */
+
+.gf-dash-user-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.gf-dash-user-name-row strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gf-account-tier {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #7dd3fc;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.gf-account-tier::before {
+  content: "";
+  width: 1px;
+  height: 0.85rem;
+  border-radius: 999px;
+  background: rgba(125, 211, 252, 0.28);
+}
+
+.gf-profile-menu-head .gf-dash-user-name-row strong,
+.gf-dash-user-meta .gf-dash-user-name-row strong {
+  display: inline-block;
+  color: white;
+}
+
+/* Usage page */
+
+.gf-usage-page {
+  display: grid;
+  gap: 1.15rem;
+}
+
+.gf-usage-hero,
+.gf-usage-billing-strip,
+.gf-usage-metric-card,
+.gf-usage-detail-panel,
+.gf-usage-plan-panel,
+.gf-settings-hero-v2,
+.gf-settings-panel-v2 {
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  background:
+    linear-gradient(180deg, rgba(7, 19, 36, 0.72), rgba(3, 11, 22, 0.8)),
+    radial-gradient(circle at top left, rgba(18, 184, 222, 0.1), transparent 28rem);
+  box-shadow:
+    0 30px 100px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(22px);
+}
+
+.gf-usage-hero {
+  min-height: 250px;
+  border-radius: 1.7rem;
+  padding: 1.65rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 2rem;
+}
+
+.gf-usage-hero h2 {
+  max-width: 850px;
+  margin: 0;
+  color: white;
+  font-size: clamp(2.3rem, 4.5vw, 4.7rem);
+  line-height: 0.92;
+  letter-spacing: -0.08em;
+}
+
+.gf-usage-hero span {
+  display: block;
+  max-width: 680px;
+  margin-top: 1rem;
+  color: #abc2d6;
+  line-height: 1.7;
+}
+
+.gf-usage-plan-card {
+  min-width: 240px;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 1.3rem;
+  padding: 1rem;
+  background: rgba(2, 8, 23, 0.38);
+}
+
+.gf-usage-plan-card p {
+  margin: 0;
+  color: #8fa8bc;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.gf-usage-plan-card h3 {
+  margin: 0.25rem 0 0.9rem;
+  color: white;
+  font-size: 2rem;
+  letter-spacing: -0.06em;
+}
+
+.gf-usage-plan-card button,
+.gf-usage-billing-strip button,
+.gf-usage-plan-panel button,
+.gf-billing-plan-compare button,
+.gf-settings-panel-head button,
+.gf-settings-billing-line button {
+  border: 0;
+  border-radius: 999px;
+  min-height: 2.8rem;
+  padding: 0 1.1rem;
+  color: #03101c;
+  background: linear-gradient(135deg, #12b8de, #7dd3fc);
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.gf-usage-billing-strip {
+  border-radius: 1.3rem;
+  padding: 1rem 1.2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.gf-usage-billing-strip strong {
+  color: white;
+  font-size: 1.05rem;
+}
+
+.gf-usage-billing-strip span {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--gf-muted);
+}
+
+.gf-usage-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+  gap: 1rem;
+}
+
+.gf-usage-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.gf-usage-metric-card {
+  min-height: 178px;
+  border-radius: 1.35rem;
+  padding: 1.1rem;
+  text-align: left;
+  cursor: pointer;
+  color: white;
+}
+
+.gf-usage-metric-card.is-active {
+  border-color: rgba(125, 211, 252, 0.38);
+  box-shadow:
+    0 0 0 1px rgba(125, 211, 252, 0.18),
+    0 30px 100px rgba(8, 144, 242, 0.16);
+}
+
+.gf-usage-metric-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.gf-usage-metric-head p {
+  margin: 0;
+  color: #9db5c8;
+  font-size: 0.85rem;
+  font-weight: 850;
+}
+
+.gf-usage-metric-head strong {
+  display: block;
+  margin-top: 0.6rem;
+  font-size: 2.8rem;
+  line-height: 0.95;
+  letter-spacing: -0.07em;
+}
+
+.gf-usage-metric-head small {
+  color: #6f8498;
+  font-size: 1rem;
+}
+
+.gf-usage-metric-head > span {
+  color: #7dd3fc;
+  font-size: 0.85rem;
+  font-weight: 950;
+}
+
+.gf-usage-progress {
+  height: 0.8rem;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 999px;
+  margin-top: 1.05rem;
+  overflow: hidden;
+  background: rgba(2, 8, 23, 0.62);
+}
+
+.gf-usage-progress i {
+  display: block;
+  height: 100%;
+  min-width: 0.35rem;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0890f2, #12b8de);
+}
+
+.gf-usage-metric-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.8rem;
+  color: var(--gf-muted);
+  font-size: 0.85rem;
+}
+
+.gf-usage-metric-foot code {
+  color: #7dd3fc;
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.gf-usage-tone-green .gf-usage-progress i {
+  background: linear-gradient(90deg, #22c55e, #34d399);
+}
+
+.gf-usage-tone-violet .gf-usage-progress i {
+  background: linear-gradient(90deg, #6366f1, #8bb6ff);
+}
+
+.gf-usage-tone-amber .gf-usage-progress i {
+  background: linear-gradient(90deg, #f59e0b, #facc15);
+}
+
+.gf-usage-tone-blue .gf-usage-progress i {
+  background: linear-gradient(90deg, #2563eb, #7dd3fc);
+}
+
+.gf-usage-detail-panel {
+  border-radius: 1.45rem;
+  padding: 1.35rem;
+}
+
+.gf-usage-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.gf-usage-detail-header h3 {
+  margin: 0;
+  color: white;
+  font-size: 1.8rem;
+  letter-spacing: -0.06em;
+}
+
+.gf-usage-detail-header > span {
+  color: #7dd3fc;
+  font-weight: 950;
+}
+
+.gf-usage-large-progress {
+  margin-top: 1.4rem;
+  border: 1px solid rgba(125, 211, 252, 0.12);
+  border-radius: 1.2rem;
+  padding: 1rem;
+  background: rgba(2, 8, 23, 0.42);
+}
+
+.gf-usage-large-progress strong {
+  color: white;
+  font-size: 3rem;
+  letter-spacing: -0.07em;
+}
+
+.gf-usage-large-progress small {
+  color: #6f8498;
+  font-size: 1.1rem;
+}
+
+.gf-usage-large-progress p {
+  margin: 0.25rem 0 0;
+  color: var(--gf-muted);
+}
+
+.gf-usage-detail-copy {
+  color: #abc2d6;
+  line-height: 1.7;
+}
+
+.gf-usage-tip-card {
+  margin-top: 1rem;
+  border: 1px solid rgba(125, 211, 252, 0.12);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: rgba(2, 8, 23, 0.46);
+}
+
+.gf-usage-tip-card span {
+  display: block;
+  color: #7dd3fc;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.gf-usage-tip-card code {
+  display: block;
+  margin-top: 0.4rem;
+  color: white;
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.gf-usage-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.gf-usage-plan-panel {
+  border-radius: 1.35rem;
+  padding: 1.2rem;
+}
+
+.gf-usage-plan-panel h3 {
+  margin: 0;
+  color: white;
+  font-size: 1.8rem;
+  letter-spacing: -0.06em;
+}
+
+.gf-usage-plan-panel ul,
+.gf-billing-plan-compare ul {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.6rem;
+  color: #abc2d6;
+}
+
+.gf-usage-plan-panel li::before,
+.gf-billing-plan-compare li::before {
+  content: "✓";
+  color: #34d399;
+  margin-right: 0.55rem;
+}
+
+.gf-usage-plan-panel-pro {
+  border-color: rgba(125, 211, 252, 0.28);
+}
+
+.gf-usage-plan-panel-pro button {
+  margin-top: 1.1rem;
+}
+
+/* Billing modal */
+
+.gf-billing-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+.gf-billing-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(18px);
+}
+
+.gf-billing-modal-panel {
+  position: absolute;
+  inset: 2rem;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 1.8rem;
+  background:
+    linear-gradient(180deg, rgba(7, 19, 36, 0.94), rgba(2, 8, 23, 0.96)),
+    radial-gradient(circle at top, rgba(18, 184, 222, 0.18), transparent 34rem);
+  box-shadow: 0 40px 140px rgba(0, 0, 0, 0.48);
+  overflow: auto;
+}
+
+.gf-billing-modal-close {
+  position: absolute;
+  top: 1.15rem;
+  right: 1.15rem;
+  width: 2.8rem;
+  height: 2.8rem;
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  border-radius: 1rem;
+  color: white;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.gf-billing-modal-close svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.gf-billing-modal-content {
+  width: min(100% - 2rem, 980px);
+  margin: 0 auto;
+  padding: 5rem 0;
+}
+
+.gf-billing-modal-content h2 {
+  max-width: 780px;
+  margin: 0;
+  color: white;
+  font-size: clamp(2.7rem, 6vw, 5.6rem);
+  line-height: 0.9;
+  letter-spacing: -0.085em;
+}
+
+.gf-billing-modal-content > span {
+  display: block;
+  max-width: 720px;
+  margin-top: 1rem;
+  color: #abc2d6;
+  line-height: 1.7;
+}
+
+.gf-billing-plan-compare {
+  margin-top: 2rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.gf-billing-plan-compare article {
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 1.35rem;
+  padding: 1.25rem;
+  background: rgba(2, 8, 23, 0.48);
+}
+
+.gf-billing-plan-compare article.is-featured {
+  border-color: rgba(125, 211, 252, 0.36);
+  background:
+    linear-gradient(135deg, rgba(18, 184, 222, 0.14), rgba(31, 84, 220, 0.1)),
+    rgba(2, 8, 23, 0.56);
+}
+
+.gf-billing-plan-compare p {
+  margin: 0;
+  color: #7dd3fc;
+  font-weight: 950;
+}
+
+.gf-billing-plan-compare h3 {
+  margin: 0.6rem 0 0;
+  color: white;
+  font-size: 3rem;
+  letter-spacing: -0.08em;
+}
+
+.gf-billing-plan-compare button {
+  margin-top: 1.2rem;
+}
+
+/* Settings billing */
+
+.gf-settings-page-v2 {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 1.2rem;
+  align-items: start;
+}
+
+.gf-settings-side-nav {
+  position: sticky;
+  top: 6.6rem;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 1.35rem;
+  padding: 1rem;
+  background: rgba(2, 8, 23, 0.5);
+  backdrop-filter: blur(22px);
+}
+
+.gf-settings-side-nav p {
+  margin: 0 0 0.9rem;
+  color: #7dd3fc;
+  font-size: 0.75rem;
+  font-weight: 950;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.gf-settings-side-nav button {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 0;
+  border-radius: 0.85rem;
+  color: #9db5c8;
+  background: transparent;
+  text-align: left;
+  font-weight: 850;
+  cursor: pointer;
+  padding: 0 0.8rem;
+}
+
+.gf-settings-side-nav button.active,
+.gf-settings-side-nav button:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.gf-settings-content-v2 {
+  display: grid;
+  gap: 1rem;
+}
+
+.gf-settings-hero-v2,
+.gf-settings-panel-v2 {
+  border-radius: 1.45rem;
+  padding: 1.35rem;
+}
+
+.gf-settings-hero-v2 h2 {
+  margin: 0;
+  max-width: 760px;
+  color: white;
+  font-size: clamp(2rem, 4vw, 4rem);
+  line-height: 0.95;
+  letter-spacing: -0.075em;
+}
+
+.gf-settings-hero-v2 span,
+.gf-settings-muted {
+  display: block;
+  max-width: 720px;
+  margin-top: 0.8rem;
+  color: #abc2d6;
+  line-height: 1.7;
+}
+
+.gf-settings-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.gf-settings-panel-head h3 {
+  margin: 0;
+  color: white;
+  font-size: 1.4rem;
+  letter-spacing: -0.04em;
+}
+
+.gf-settings-form-grid {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.gf-settings-form-grid label {
+  color: #9db5c8;
+  font-size: 0.85rem;
+  font-weight: 850;
+}
+
+.gf-settings-form-grid input {
+  width: 100%;
+  height: 3rem;
+  margin-top: 0.45rem;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 0.95rem;
+  padding: 0 1rem;
+  color: white;
+  background: rgba(2, 8, 23, 0.48);
+  outline: 0;
+}
+
+.gf-settings-auth-list {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.gf-settings-auth-list div,
+.gf-settings-billing-line {
+  border: 1px solid rgba(125, 211, 252, 0.12);
+  border-radius: 1rem;
+  padding: 0.9rem;
+  background: rgba(2, 8, 23, 0.42);
+}
+
+.gf-settings-auth-list div,
+.gf-settings-billing-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.gf-settings-auth-list span,
+.gf-settings-billing-line span {
+  color: #abc2d6;
+}
+
+.gf-settings-auth-list strong,
+.gf-settings-billing-line strong {
+  color: white;
+}
+
+@media (max-width: 1080px) {
+  .gf-usage-layout,
+  .gf-settings-page-v2 {
+    grid-template-columns: 1fr;
+  }
+
+  .gf-settings-side-nav {
+    position: relative;
+    top: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .gf-usage-hero,
+  .gf-usage-billing-strip,
+  .gf-settings-panel-head,
+  .gf-settings-billing-line {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .gf-usage-metrics-grid,
+  .gf-usage-plan-grid,
+  .gf-billing-plan-compare,
+  .gf-settings-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gf-billing-modal-panel {
+    inset: 0.75rem;
+  }
+}
+
+/* Usage page upgrade prompt cleanup */
+
+.gf-usage-hero {
+  align-items: flex-end;
+}
+
+.gf-usage-hero > div:first-child {
+  max-width: 1120px;
+}
+
+.gf-usage-plan-panel-pro button {
+  display: none;
+}
+
+.gf-usage-billing-strip {
+  order: 99;
+}
+
+.gf-billing-plan-compare article.is-featured button {
+  background: rgba(255, 255, 255, 0.08);
+  color: #dff8ff;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+}
+
+/* Usage detail tooltip + selected detail rows */
+
+.gf-usage-metric-card {
+  position: relative;
+  overflow: visible;
+}
+
+.gf-usage-card-tooltip {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: -0.85rem;
+  z-index: 50;
+  width: max-content;
+  max-width: 14rem;
+  transform: translateX(-50%) translateY(0.35rem);
+  opacity: 0;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 0.85rem;
+  background:
+    linear-gradient(180deg, rgba(7, 19, 36, 0.98), rgba(2, 8, 23, 0.98)),
+    rgba(2, 8, 23, 0.98);
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.44);
+  padding: 0.65rem 0.78rem;
+  color: #e6faff;
+  font-size: 0.76rem;
+  font-weight: 900;
+  white-space: nowrap;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.gf-usage-card-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -0.35rem;
+  width: 0.65rem;
+  height: 0.65rem;
+  transform: translateX(-50%) rotate(45deg);
+  background: rgba(2, 8, 23, 0.98);
+  border-right: 1px solid rgba(125, 211, 252, 0.18);
+  border-bottom: 1px solid rgba(125, 211, 252, 0.18);
+}
+
+.gf-usage-metric-card:hover .gf-usage-card-tooltip,
+.gf-usage-metric-card:focus-visible .gf-usage-card-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.gf-usage-detail-list {
+  margin-top: 1rem;
+  border: 1px solid rgba(125, 211, 252, 0.12);
+  border-radius: 1.15rem;
+  background: rgba(2, 8, 23, 0.38);
+  overflow: hidden;
+}
+
+.gf-usage-detail-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid rgba(125, 211, 252, 0.1);
+  padding: 0.85rem 1rem;
+}
+
+.gf-usage-detail-list-head span {
+  color: #7dd3fc;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.gf-usage-detail-list-head strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 999px;
+  color: #dff8ff;
+  background: rgba(18, 184, 222, 0.08);
+  font-size: 0.8rem;
+  font-weight: 950;
+}
+
+.gf-usage-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.95rem 1rem;
+}
+
+.gf-usage-detail-row + .gf-usage-detail-row {
+  border-top: 1px solid rgba(125, 211, 252, 0.08);
+}
+
+.gf-usage-detail-row strong {
+  display: block;
+  color: white;
+  font-size: 0.95rem;
+  letter-spacing: -0.025em;
+}
+
+.gf-usage-detail-row p {
+  margin: 0.18rem 0 0;
+  color: #8fa8bc;
+  font-size: 0.82rem;
+}
+
+.gf-usage-detail-row > span {
+  flex: 0 0 auto;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 999px;
+  padding: 0.45rem 0.7rem;
+  color: #7dd3fc;
+  background: rgba(18, 184, 222, 0.08);
+  font-size: 0.78rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.gf-usage-detail-empty {
+  padding: 1rem;
+  color: #8fa8bc;
+  font-size: 0.9rem;
+}
+
+.gf-usage-detail-panel {
+  min-height: 100%;
+}
+
+.gf-usage-tip-card {
+  margin-top: 1rem;
+}
