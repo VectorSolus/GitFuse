@@ -11,6 +11,7 @@ type DashboardLayoutProps = {
   user: {
     name: string;
     email: string;
+    plan?: "Free" | "Pro" | "Team";
   };
 };
 
@@ -64,11 +65,6 @@ const navItems: NavItem[] = [
     icon: "usage",
   },
   {
-    label: "Billing",
-    href: "/dashboard/billing",
-    icon: "billing",
-  },
-  {
     label: "Docs",
     href: "/docs",
     icon: "docs",
@@ -82,8 +78,8 @@ const pageTitles: Record<string, string> = {
   "/dashboard/devices": "Devices",
   "/dashboard/history": "History",
   "/dashboard/usage": "Usage",
-  "/dashboard/billing": "Billing",
   "/dashboard/settings": "Settings",
+  "/dashboard/upgrade": "Upgrade plan",
 };
 
 export function DashboardLayout({ children, user }: DashboardLayoutProps) {
@@ -110,6 +106,8 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
 
     return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   }, [user.email, user.name]);
+
+  const subscriptionTier = user.plan ?? "Free";
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -232,21 +230,21 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
         </div>
 
         <nav className="gf-dash-nav" aria-label="Dashboard navigation">
-            {navItems.map((item) => (
-                <Link
-                key={item.href}
-                href={item.href}
-                target={item.newTab ? "_blank" : undefined}
-                rel={item.newTab ? "noopener noreferrer" : undefined}
-                className={`gf-dash-nav-item ${
-                    !item.newTab && isActive(item.href) ? "active" : ""
-                }`}
-                title={collapsed ? item.label : undefined}
-                >
-                <Icon name={item.icon} />
-                <span className="gf-dash-label">{item.label}</span>
-                </Link>
-            ))}
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              target={item.newTab ? "_blank" : undefined}
+              rel={item.newTab ? "noopener noreferrer" : undefined}
+              className={`gf-dash-nav-item ${
+                !item.newTab && isActive(item.href) ? "active" : ""
+              }`}
+              title={collapsed ? item.label : undefined}
+            >
+              <Icon name={item.icon} />
+              <span className="gf-dash-label">{item.label}</span>
+            </Link>
+          ))}
         </nav>
 
         <div className="gf-dash-sidebar-bottom" ref={profileMenuRef}>
@@ -265,7 +263,10 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
               <div className="gf-dash-user-avatar">{initials}</div>
 
               <div className="gf-dash-user-meta">
-                <strong>{user.name}</strong>
+                <div className="gf-dash-user-name-row">
+                  <strong>{user.name}</strong>
+                  <span className="gf-account-tier">{subscriptionTier}</span>
+                </div>
                 <p>{user.email}</p>
               </div>
 
@@ -280,14 +281,19 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
                   <div className="gf-dash-user-avatar">{initials}</div>
 
                   <div>
-                    <strong>{user.name}</strong>
+                    <div className="gf-dash-user-name-row">
+                      <strong>{user.name}</strong>
+                      <span className="gf-account-tier">
+                        {subscriptionTier}
+                      </span>
+                    </div>
                     <p>{user.email}</p>
                   </div>
                 </div>
 
                 <div className="gf-profile-menu-list">
                   <Link
-                    href="/dashboard/settings"
+                    href="/dashboard/settings?section=profile"
                     role="menuitem"
                     onClick={() => setProfileMenuOpen(false)}
                   >
@@ -305,7 +311,16 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
                   </Link>
 
                   <Link
-                    href="/dashboard/billing"
+                    href="/dashboard/settings?section=billing"
+                    role="menuitem"
+                    onClick={() => setProfileMenuOpen(false)}
+                  >
+                    <Icon name="billing" />
+                    <span>Billing</span>
+                  </Link>
+
+                  <Link
+                    href="/dashboard/upgrade"
                     role="menuitem"
                     onClick={() => setProfileMenuOpen(false)}
                   >

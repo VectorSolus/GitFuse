@@ -1,6 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import type { FormEvent } from "react";
 
 type SettingsSection =
   | "Profile"
@@ -11,6 +14,15 @@ type SettingsSection =
   | "Danger zone";
 
 type AddEmailStep = "email" | "password" | "otp";
+
+type BillingLimit = {
+  label: string;
+  value: string;
+  helper: string;
+  tone: "ocean" | "green" | "violet" | "amber";
+};
+
+const accountEmail = "helloiacon@gmail.com";
 
 const settingsSections: SettingsSection[] = [
   "Profile",
@@ -23,16 +35,77 @@ const settingsSections: SettingsSection[] = [
 
 const connectedEmails = [
   {
-    email: "helloiacon@gmail.com",
+    email: accountEmail,
     status: "Primary",
   },
 ];
 
+const billingLimits: BillingLimit[] = [
+  {
+    label: "Repositories",
+    value: "5",
+    helper: "tracked repositories",
+    tone: "ocean",
+  },
+  {
+    label: "Devices",
+    value: "3",
+    helper: "trusted machines",
+    tone: "green",
+  },
+  {
+    label: "Storage",
+    value: "500 MB",
+    helper: "private relay storage",
+    tone: "violet",
+  },
+  {
+    label: "History",
+    value: "30 days",
+    helper: "sync history retention",
+    tone: "amber",
+  },
+];
+
+function getSettingsSectionFromQuery(value: string | null): SettingsSection | null {
+  if (!value) return null;
+
+  const normalized = value.toLowerCase();
+
+  if (normalized === "profile") return "Profile";
+  if (normalized === "authentication") return "Authentication";
+  if (normalized === "security") return "Security";
+  if (normalized === "billing") return "Billing";
+  if (normalized === "api-access" || normalized === "api") return "API access";
+  if (normalized === "danger-zone" || normalized === "danger") return "Danger zone";
+
+  return null;
+}
+
 export default function SettingsPage() {
-  const [selectedSection, setSelectedSection] =
-    useState<SettingsSection>("Profile");
+  const searchParams = useSearchParams();
+
+  const [selectedSection, setSelectedSection] = useState<SettingsSection>(() => {
+    return getSettingsSectionFromQuery(searchParams.get("section")) ?? "Profile";
+  });
+
   const [addEmailOpen, setAddEmailOpen] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletedOpen, setDeletedOpen] = useState(false);
+
+  useEffect(() => {
+    const section = getSettingsSectionFromQuery(searchParams.get("section"));
+
+    if (section) {
+      setSelectedSection(section);
+    }
+  }, [searchParams]);
+
+  function handleDeleted() {
+    setDeleteOpen(false);
+    setDeletedOpen(true);
+  }
 
   return (
     <div className="gf-settings-v3">
@@ -68,7 +141,9 @@ export default function SettingsPage() {
 
         {selectedSection === "API access" ? <ApiAccessSection /> : null}
 
-        {selectedSection === "Danger zone" ? <DangerZoneSection /> : null}
+        {selectedSection === "Danger zone" ? (
+          <DangerZoneSection onDelete={() => setDeleteOpen(true)} />
+        ) : null}
       </section>
 
       {addEmailOpen ? (
@@ -77,6 +152,18 @@ export default function SettingsPage() {
 
       {billingOpen ? (
         <BillingModal onClose={() => setBillingOpen(false)} />
+      ) : null}
+
+      {deleteOpen ? (
+        <DeleteAccountModal
+          email={accountEmail}
+          onClose={() => setDeleteOpen(false)}
+          onDeleted={handleDeleted}
+        />
+      ) : null}
+
+      {deletedOpen ? (
+        <DeletedConfirmationModal onClose={() => setDeletedOpen(false)} />
       ) : null}
     </div>
   );
@@ -113,7 +200,7 @@ function ProfileSection() {
 
           <label>
             Primary email
-            <input defaultValue="helloiacon@gmail.com" />
+            <input defaultValue={accountEmail} />
           </label>
         </div>
 
@@ -276,13 +363,26 @@ function BillingSection({ onOpenBilling }: { onOpenBilling: () => void }) {
           </button>
         </div>
 
-        <div className="gf-settings-v3-billing-line">
+        <div className="gf-settings-billing-summary">
           <div>
             <strong>Free plan</strong>
-            <span>5 repositories · 3 devices · 500 MB storage · 30 days history</span>
+            <span>Active workspace plan</span>
           </div>
 
           <em>Active</em>
+        </div>
+
+        <div className="gf-settings-billing-tiles">
+          {billingLimits.map((limit) => (
+            <article
+              key={limit.label}
+              className={`gf-settings-billing-tile gf-settings-billing-tile-${limit.tone}`}
+            >
+              <p>{limit.label}</p>
+              <strong>{limit.value}</strong>
+              <span>{limit.helper}</span>
+            </article>
+          ))}
         </div>
       </section>
     </>
@@ -325,36 +425,61 @@ function ApiAccessSection() {
   );
 }
 
-function DangerZoneSection() {
+function DangerZoneSection({ onDelete }: { onDelete: () => void }) {
   return (
     <>
       <section className="gf-settings-v3-hero gf-settings-v3-danger-hero">
         <p className="gf-dash-eyebrow">Danger zone</p>
         <h2>High-impact account actions.</h2>
         <span>
-          These controls are intentionally separated. Backend confirmation,
-          password verification, and 2FA checks should be added before enabling
-          them.
+          Delete controls are separated from normal settings and require email
+          confirmation before continuing.
         </span>
       </section>
 
       <section className="gf-settings-v3-panel gf-settings-v3-danger-panel">
         <div className="gf-settings-v3-panel-head">
           <div>
-            <p className="gf-dash-eyebrow">Delete workspace</p>
-            <h3>Permanent deletion</h3>
+            <p className="gf-dash-eyebrow">Delete account</p>
+            <h3>Permanent account deletion</h3>
           </div>
 
-          <button type="button" disabled>
-            Disabled
+          <button
+            type="button"
+            className="gf-settings-delete-button"
+            onClick={onDelete}
+          >
+            Delete account
           </button>
         </div>
 
-        <div className="gf-settings-v3-upcoming-card">
-          <strong>Workspace deletion is disabled in frontend preview.</strong>
+        <div className="gf-settings-danger-grid">
+          <article>
+            <strong>Account profile</strong>
+            <span>Your GitFuse account profile and dashboard identity.</span>
+          </article>
+
+          <article>
+            <strong>Connected emails</strong>
+            <span>Email sign-in methods linked to this account.</span>
+          </article>
+
+          <article>
+            <strong>Workspace access</strong>
+            <span>Dashboard access, trusted devices, and future API keys.</span>
+          </article>
+
+          <article>
+            <strong>Billing connection</strong>
+            <span>Plan metadata and future billing links.</span>
+          </article>
+        </div>
+
+        <div className="gf-settings-v3-upcoming-card gf-settings-danger-warning">
+          <strong>This action should be treated as permanent.</strong>
           <span>
-            This should only be enabled after backend account confirmation,
-            billing checks, and data-retention logic are implemented.
+            Backend deletion is not connected yet. This frontend flow shows the
+            confirmation experience before the destructive action is wired.
           </span>
         </div>
       </section>
@@ -373,21 +498,21 @@ function AddEmailModal({ onClose }: { onClose: () => void }) {
     return 2;
   }, [step]);
 
-  function handleEmailSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!email.trim()) return;
     setStep("password");
   }
 
-  function handlePasswordSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (password.length < 8) return;
     setStep("otp");
   }
 
-  function handleOtpSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function handleOtpSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onClose();
   }
@@ -456,7 +581,11 @@ function AddEmailModal({ onClose }: { onClose: () => void }) {
                 Email address
                 <div>
                   <MailIcon />
-                  <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
                 </div>
               </label>
 
@@ -487,8 +616,7 @@ function AddEmailModal({ onClose }: { onClose: () => void }) {
               <p className="gf-dash-eyebrow">Verify email</p>
               <h2>Enter the OTP sent to your inbox.</h2>
               <span>
-                We sent a verification code to <strong>{email}</strong>. Backend
-                delivery can be wired later.
+                We sent a verification code to <strong>{email}</strong>.
               </span>
 
               <label className="gf-add-email-field">
@@ -525,6 +653,110 @@ function AddEmailModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+function DeleteAccountModal({
+  email,
+  onClose,
+  onDeleted,
+}: {
+  email: string;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [confirmationEmail, setConfirmationEmail] = useState("");
+  const canDelete =
+    confirmationEmail.trim().toLowerCase() === email.toLowerCase();
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canDelete) return;
+    onDeleted();
+  }
+
+  return (
+    <div className="gf-delete-account-modal" role="dialog" aria-modal="true">
+      <div className="gf-delete-account-backdrop" onClick={onClose} />
+
+      <form className="gf-delete-account-card" onSubmit={handleSubmit}>
+        <button
+          type="button"
+          className="gf-delete-account-close"
+          onClick={onClose}
+          aria-label="Close delete account"
+        >
+          <CloseIcon />
+        </button>
+
+        <p className="gf-dash-eyebrow">Delete account</p>
+        <h2>Confirm account deletion.</h2>
+        <span>
+          Enter your email address to confirm this action:
+          <strong> {email}</strong>
+        </span>
+
+        <label className="gf-delete-account-field">
+          Confirmation email
+          <input
+            type="email"
+            value={confirmationEmail}
+            placeholder={email}
+            onChange={(event) => setConfirmationEmail(event.target.value)}
+            autoFocus
+          />
+        </label>
+
+        <div className="gf-delete-account-actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+
+          <button type="submit" disabled={!canDelete}>
+            Delete account
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function DeletedConfirmationModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="gf-delete-account-modal" role="dialog" aria-modal="true">
+      <div className="gf-delete-account-backdrop" onClick={onClose} />
+
+      <section className="gf-delete-account-card gf-delete-success-card">
+        <button
+          type="button"
+          className="gf-delete-account-close"
+          onClick={onClose}
+          aria-label="Close confirmation"
+        >
+          <CloseIcon />
+        </button>
+
+        <div className="gf-delete-success-icon">
+          <CheckIcon />
+        </div>
+
+        <p className="gf-dash-eyebrow">Account deleted</p>
+        <h2>Your account has been deleted.</h2>
+        <span>
+          This confirmation is currently frontend-only. Once backend deletion is
+          connected, this screen can redirect the user to the homepage.
+        </span>
+
+        <button
+          type="button"
+          className="gf-delete-success-button"
+          onClick={onClose}
+        >
+          Done
+        </button>
+      </section>
+    </div>
+  );
+}
+
 function BillingModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="gf-settings-billing-modal" role="dialog" aria-modal="true">
@@ -548,22 +780,28 @@ function BillingModal({ onClose }: { onClose: () => void }) {
         </span>
 
         <div className="gf-settings-billing-mini-grid">
+          {billingLimits.map((limit) => (
+            <div key={limit.label}>
+              <strong>{limit.value}</strong>
+              <span>{limit.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="gf-settings-upgrade-tile">
           <div>
-            <strong>5</strong>
-            <span>repositories</span>
+            <p>Upgrade path</p>
+            <strong>Need more workspace capacity?</strong>
+            <span>
+              Open the upgrade page to review larger limits, longer history, and
+              more private repository capacity.
+            </span>
           </div>
-          <div>
-            <strong>3</strong>
-            <span>devices</span>
-          </div>
-          <div>
-            <strong>500 MB</strong>
-            <span>storage</span>
-          </div>
-          <div>
-            <strong>30 days</strong>
-            <span>history</span>
-          </div>
+
+          <Link href="/dashboard/upgrade" target="_blank" rel="noreferrer">
+            Upgrade
+            <ExternalArrowIcon />
+          </Link>
         </div>
       </section>
     </div>
@@ -682,6 +920,26 @@ function ArrowIcon() {
   );
 }
 
+function ExternalArrowIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M7 17L17 7"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M9 7h8v8"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function CloseIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -690,6 +948,20 @@ function CloseIcon() {
         stroke="currentColor"
         strokeWidth="2.2"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M20 6L9 17l-5-5"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
