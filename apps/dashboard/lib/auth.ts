@@ -48,7 +48,7 @@ const providers = [
       const email = normalizeEmail(String(credentials?.email ?? ""));
       const otp = String(credentials?.otp ?? "");
 
-      const verification = verifyOtpChallenge(email, otp);
+      const verification = await verifyOtpChallenge(email, otp);
 
       if (!verification.ok) {
         return null;

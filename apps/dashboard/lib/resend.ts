@@ -55,6 +55,31 @@ async function sendEmail(input: EmailInput) {
   return (await response.json()) as { id: string };
 }
 
+function defaultAuthEmailLog() {
+  if (process.env.GITFUSE_AUTH_EMAIL_LOG) return process.env.GITFUSE_AUTH_EMAIL_LOG;
+  if (process.env.NODE_ENV !== "production" && !process.env.RESEND_API_KEY) return "/tmp/gitfuse-auth-otp.log";
+  return null;
+}
+
+export async function sendLoginOtp(input: {
+  email: string;
+  code: string;
+  subject?: string;
+  emailLog?: string | null;
+}) {
+  return sendEmail({
+    to: input.email,
+    subject: input.subject ?? `Your GitFuse verification code: ${input.code}`,
+    emailLog: input.emailLog ?? defaultAuthEmailLog(),
+    html: `
+      <h1>Your GitFuse verification code</h1>
+      <p>Use this one-time code to finish signing in to your GitFuse dashboard.</p>
+      <p style="font-family:monospace;font-size:32px;font-weight:700;letter-spacing:8px">${input.code}</p>
+      <p>This code expires in 10 minutes. If you did not request it, you can ignore this email.</p>
+    `
+  });
+}
+
 export async function sendBundleExpiryWarning(input: {
   email: string;
   repositoryName: string;

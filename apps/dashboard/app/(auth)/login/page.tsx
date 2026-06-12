@@ -17,6 +17,9 @@ export default function LoginPage() {
   const [step, setStep] = useState<LoginStep>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otpDigits, setOtpDigits] = useState(Array<string>(6).fill(""));
+  const [pending, setPending] = useState(false);
+  const [feedback, setFeedback] = useState("");
   const emailInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -44,10 +47,13 @@ export default function LoginPage() {
     return `${visibleName}@${domain}`;
   }, [email]);
 
-  function openOAuth(provider: OAuthProvider) {
-    void signIn(provider, {
+  async function openOAuth(provider: OAuthProvider) {
+    const response = await signIn(provider, {
       callbackUrl: "/dashboard",
+      redirect: false,
     });
+
+    window.open(response?.url ?? `/api/auth/signin/${provider}`, "_blank", "noopener,noreferrer");
   }
 
   function handlePreferredSignIn() {
@@ -58,8 +64,9 @@ export default function LoginPage() {
     }, 0);
   }
 
-  function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setFeedback("");
 
     const trimmedEmail = email.trim();
 
@@ -74,9 +81,61 @@ export default function LoginPage() {
     if (step === "password") {
       if (password.trim().length < 8) return;
 
+      setPending(true);
       setEmail(trimmedEmail);
-      setStep("otp");
+
+      try {
+        const response = await fetch("/api/auth/otp/request", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            email: trimmedEmail,
+            password,
+            purpose: "sign_in_email",
+          }),
+        });
+
+        if (!response.ok) throw new Error("Could not send verification code.");
+        setOtpDigits(Array<string>(6).fill(""));
+        setStep("otp");
+      } catch (error) {
+        setFeedback(error instanceof Error ? error.message : "Could not send verification code.");
+      } finally {
+        setPending(false);
+      }
     }
+  }
+
+  function handleOtpChange(index: number, value: string) {
+    const digit = value.replace(/\D/g, "").slice(-1);
+    setOtpDigits((current) => {
+      const next = [...current];
+      next[index] = digit;
+      return next;
+    });
+  }
+
+  async function handleOtpVerify() {
+    const otp = otpDigits.join("");
+    if (otp.length !== 6) return;
+    setPending(true);
+    setFeedback("");
+
+    const response = await signIn("credentials", {
+      email,
+      otp,
+      callbackUrl: "/dashboard",
+      redirect: false,
+    });
+
+    setPending(false);
+
+    if (response?.ok && response.url) {
+      window.location.href = response.url;
+      return;
+    }
+
+    setFeedback("Verification code is invalid or expired.");
   }
 
   return (
@@ -150,12 +209,21 @@ export default function LoginPage() {
                   key={index}
                   inputMode="numeric"
                   maxLength={1}
+                  value={otpDigits[index]}
+                  onChange={(event) => handleOtpChange(index, event.target.value)}
                   aria-label={`OTP digit ${index + 1}`}
                 />
               ))}
             </div>
 
-            <button type="button" className="gf-login-primary-wide">
+            {feedback ? <p className="gf-otp-copy">{feedback}</p> : null}
+
+            <button
+              type="button"
+              className="gf-login-primary-wide"
+              onClick={handleOtpVerify}
+              disabled={pending}
+            >
               Verify and continue
             </button>
 
@@ -268,6 +336,7 @@ export default function LoginPage() {
                       type="submit"
                       className="gf-arrow-button"
                       aria-label="Continue to OTP verification"
+                      disabled={pending}
                     >
                       <ArrowRight size={20} />
                     </button>
@@ -278,6 +347,7 @@ export default function LoginPage() {
                     characters. The next screen will verify your email with an
                     OTP.
                   </p>
+                  {feedback ? <p>{feedback}</p> : null}
                 </div>
               ) : null}
             </form>
