@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { signOut } from "next-auth/react";
 import type { FormEvent } from "react";
+
+import { useDashboardData, type DashboardData } from "@/hooks/use-dashboard-data";
+import { deleteCurrentAccountAction } from "./actions";
 
 type SettingsSection =
   | "Profile"
@@ -22,8 +26,6 @@ type BillingLimit = {
   tone: "ocean" | "green" | "violet" | "amber";
 };
 
-const accountEmail = "helloiacon@gmail.com";
-
 const settingsSections: SettingsSection[] = [
   "Profile",
   "Authentication",
@@ -31,40 +33,6 @@ const settingsSections: SettingsSection[] = [
   "Billing",
   "API access",
   "Danger zone",
-];
-
-const connectedEmails = [
-  {
-    email: accountEmail,
-    status: "Primary",
-  },
-];
-
-const billingLimits: BillingLimit[] = [
-  {
-    label: "Repositories",
-    value: "5",
-    helper: "tracked repositories",
-    tone: "ocean",
-  },
-  {
-    label: "Devices",
-    value: "3",
-    helper: "trusted machines",
-    tone: "green",
-  },
-  {
-    label: "Storage",
-    value: "500 MB",
-    helper: "private relay storage",
-    tone: "violet",
-  },
-  {
-    label: "History",
-    value: "30 days",
-    helper: "sync history retention",
-    tone: "amber",
-  },
 ];
 
 function getSettingsSectionFromQuery(value: string | null): SettingsSection | null {
@@ -84,6 +52,18 @@ function getSettingsSectionFromQuery(value: string | null): SettingsSection | nu
 
 export default function SettingsPage() {
   const searchParams = useSearchParams();
+  const { data } = useDashboardData();
+  const accountEmail = data?.user.email ?? "";
+  const displayName = data?.user.name || "GitFuse";
+  const connectedEmails = accountEmail
+    ? [
+        {
+          email: accountEmail,
+          status: "Primary",
+        },
+      ]
+    : [];
+  const billingLimits = buildBillingLimits(data);
 
   const [selectedSection, setSelectedSection] = useState<SettingsSection>(() => {
     return getSettingsSectionFromQuery(searchParams.get("section")) ?? "Profile";
@@ -92,7 +72,6 @@ export default function SettingsPage() {
   const [addEmailOpen, setAddEmailOpen] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deletedOpen, setDeletedOpen] = useState(false);
 
   useEffect(() => {
     const section = getSettingsSectionFromQuery(searchParams.get("section"));
@@ -101,11 +80,6 @@ export default function SettingsPage() {
       setSelectedSection(section);
     }
   }, [searchParams]);
-
-  function handleDeleted() {
-    setDeleteOpen(false);
-    setDeletedOpen(true);
-  }
 
   return (
     <div className="gf-settings-v3">
@@ -127,16 +101,25 @@ export default function SettingsPage() {
       </aside>
 
       <section className="gf-settings-v3-main">
-        {selectedSection === "Profile" ? <ProfileSection /> : null}
+        {selectedSection === "Profile" ? (
+          <ProfileSection displayName={displayName} accountEmail={accountEmail} />
+        ) : null}
 
         {selectedSection === "Authentication" ? (
-          <AuthenticationSection onAddEmail={() => setAddEmailOpen(true)} />
+          <AuthenticationSection
+            connectedEmails={connectedEmails}
+            onAddEmail={() => setAddEmailOpen(true)}
+          />
         ) : null}
 
         {selectedSection === "Security" ? <SecuritySection /> : null}
 
         {selectedSection === "Billing" ? (
-          <BillingSection onOpenBilling={() => setBillingOpen(true)} />
+          <BillingSection
+            billingLimits={billingLimits}
+            tier={data?.billing.tier ?? "free"}
+            onOpenBilling={() => setBillingOpen(true)}
+          />
         ) : null}
 
         {selectedSection === "API access" ? <ApiAccessSection /> : null}
@@ -151,25 +134,30 @@ export default function SettingsPage() {
       ) : null}
 
       {billingOpen ? (
-        <BillingModal onClose={() => setBillingOpen(false)} />
+        <BillingModal
+          billingLimits={billingLimits}
+          tier={data?.billing.tier ?? "free"}
+          onClose={() => setBillingOpen(false)}
+        />
       ) : null}
 
       {deleteOpen ? (
         <DeleteAccountModal
           email={accountEmail}
           onClose={() => setDeleteOpen(false)}
-          onDeleted={handleDeleted}
         />
-      ) : null}
-
-      {deletedOpen ? (
-        <DeletedConfirmationModal onClose={() => setDeletedOpen(false)} />
       ) : null}
     </div>
   );
 }
 
-function ProfileSection() {
+function ProfileSection({
+  displayName,
+  accountEmail,
+}: {
+  displayName: string;
+  accountEmail: string;
+}) {
   return (
     <>
       <section className="gf-settings-v3-hero">
@@ -195,12 +183,12 @@ function ProfileSection() {
         <div className="gf-settings-v3-form-grid">
           <label>
             Display name
-            <input defaultValue="Iacon" />
+            <input key={displayName} defaultValue={displayName} />
           </label>
 
           <label>
             Primary email
-            <input defaultValue={accountEmail} />
+            <input key={accountEmail} defaultValue={accountEmail} />
           </label>
         </div>
 
@@ -213,7 +201,13 @@ function ProfileSection() {
   );
 }
 
-function AuthenticationSection({ onAddEmail }: { onAddEmail: () => void }) {
+function AuthenticationSection({
+  connectedEmails,
+  onAddEmail,
+}: {
+  connectedEmails: { email: string; status: string }[];
+  onAddEmail: () => void;
+}) {
   return (
     <>
       <section className="gf-settings-v3-hero">
@@ -339,15 +333,23 @@ function SecuritySection() {
   );
 }
 
-function BillingSection({ onOpenBilling }: { onOpenBilling: () => void }) {
+function BillingSection({
+  billingLimits,
+  tier,
+  onOpenBilling,
+}: {
+  billingLimits: BillingLimit[];
+  tier: string;
+  onOpenBilling: () => void;
+}) {
   return (
     <>
       <section className="gf-settings-v3-hero">
         <p className="gf-dash-eyebrow">Billing</p>
         <h2>Manage plan limits without clutter.</h2>
         <span>
-          Your current workspace is on the free tier. Billing is frontend-only
-          for now and can later be wired to Stripe checkout and invoices.
+          Your current workspace is on the {tier} tier. Stripe checkout and
+          invoices can be connected from the upgrade flow when configured.
         </span>
       </section>
 
@@ -355,7 +357,7 @@ function BillingSection({ onOpenBilling }: { onOpenBilling: () => void }) {
         <div className="gf-settings-v3-panel-head">
           <div>
             <p className="gf-dash-eyebrow">Current plan</p>
-            <h3>Free workspace</h3>
+            <h3>{titleCase(tier)} workspace</h3>
           </div>
 
           <button type="button" onClick={onOpenBilling}>
@@ -365,7 +367,7 @@ function BillingSection({ onOpenBilling }: { onOpenBilling: () => void }) {
 
         <div className="gf-settings-billing-summary">
           <div>
-            <strong>Free plan</strong>
+            <strong>{titleCase(tier)} plan</strong>
             <span>Active workspace plan</span>
           </div>
 
@@ -478,8 +480,8 @@ function DangerZoneSection({ onDelete }: { onDelete: () => void }) {
         <div className="gf-settings-v3-upcoming-card gf-settings-danger-warning">
           <strong>This action should be treated as permanent.</strong>
           <span>
-            Backend deletion is not connected yet. This frontend flow shows the
-            confirmation experience before the destructive action is wired.
+            Deleting your account removes dashboard records and signs this
+            browser out after confirmation.
           </span>
         </div>
       </section>
@@ -491,6 +493,9 @@ function AddEmailModal({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<AddEmailStep>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [pending, setPending] = useState(false);
 
   const stepIndex = useMemo(() => {
     if (step === "email") return 0;
@@ -505,16 +510,50 @@ function AddEmailModal({ onClose }: { onClose: () => void }) {
     setStep("password");
   }
 
-  function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (password.length < 8) return;
-    setStep("otp");
+    setPending(true);
+    setFeedback("");
+
+    try {
+      const response = await fetch("/api/auth/otp/request", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, password, purpose: "add_email" }),
+      });
+
+      if (!response.ok) throw new Error("Could not send verification code.");
+      setStep("otp");
+      setFeedback("Verification code sent.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Could not send verification code.");
+    } finally {
+      setPending(false);
+    }
   }
 
-  function handleOtpSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleOtpSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onClose();
+    if (otp.length !== 6) return;
+    setPending(true);
+    setFeedback("");
+
+    try {
+      const response = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, code: otp, purpose: "add_email" }),
+      });
+
+      if (!response.ok) throw new Error("Verification code is invalid or expired.");
+      onClose();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Verification code is invalid or expired.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -618,6 +657,7 @@ function AddEmailModal({ onClose }: { onClose: () => void }) {
               <span>
                 We sent a verification code to <strong>{email}</strong>.
               </span>
+              {feedback ? <span>{feedback}</span> : null}
 
               <label className="gf-add-email-field">
                 OTP code
@@ -627,10 +667,12 @@ function AddEmailModal({ onClose }: { onClose: () => void }) {
                     inputMode="numeric"
                     placeholder="000000"
                     maxLength={6}
+                    value={otp}
+                    onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
                     autoFocus
                   />
 
-                  <button type="submit" aria-label="Verify email">
+                  <button type="submit" aria-label="Verify email" disabled={pending}>
                     <ArrowIcon />
                   </button>
                 </div>
@@ -656,21 +698,36 @@ function AddEmailModal({ onClose }: { onClose: () => void }) {
 function DeleteAccountModal({
   email,
   onClose,
-  onDeleted,
 }: {
   email: string;
   onClose: () => void;
-  onDeleted: () => void;
 }) {
   const [confirmationEmail, setConfirmationEmail] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
   const canDelete =
     confirmationEmail.trim().toLowerCase() === email.toLowerCase();
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!canDelete) return;
-    onDeleted();
+    if (!canDelete || pending) {
+      setError("Email confirmation does not match this account.");
+      return;
+    }
+
+    setPending(true);
+    setError("");
+
+    const result = await deleteCurrentAccountAction({ confirmationEmail });
+
+    if (!result.ok) {
+      setPending(false);
+      setError(result.error ?? "Could not delete account. Please try again.");
+      return;
+    }
+
+    await signOut({ callbackUrl: result.redirectTo ?? "/" });
   }
 
   return (
@@ -700,18 +757,23 @@ function DeleteAccountModal({
             type="email"
             value={confirmationEmail}
             placeholder={email}
-            onChange={(event) => setConfirmationEmail(event.target.value)}
+            onChange={(event) => {
+              setConfirmationEmail(event.target.value);
+              setError("");
+            }}
             autoFocus
           />
         </label>
+
+        {error ? <span>{error}</span> : null}
 
         <div className="gf-delete-account-actions">
           <button type="button" onClick={onClose}>
             Cancel
           </button>
 
-          <button type="submit" disabled={!canDelete}>
-            Delete account
+          <button type="submit" disabled={!canDelete || pending}>
+            {pending ? "Deleting..." : "Delete account"}
           </button>
         </div>
       </form>
@@ -719,45 +781,15 @@ function DeleteAccountModal({
   );
 }
 
-function DeletedConfirmationModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="gf-delete-account-modal" role="dialog" aria-modal="true">
-      <div className="gf-delete-account-backdrop" onClick={onClose} />
-
-      <section className="gf-delete-account-card gf-delete-success-card">
-        <button
-          type="button"
-          className="gf-delete-account-close"
-          onClick={onClose}
-          aria-label="Close confirmation"
-        >
-          <CloseIcon />
-        </button>
-
-        <div className="gf-delete-success-icon">
-          <CheckIcon />
-        </div>
-
-        <p className="gf-dash-eyebrow">Account deleted</p>
-        <h2>Your account has been deleted.</h2>
-        <span>
-          This confirmation is currently frontend-only. Once backend deletion is
-          connected, this screen can redirect the user to the homepage.
-        </span>
-
-        <button
-          type="button"
-          className="gf-delete-success-button"
-          onClick={onClose}
-        >
-          Done
-        </button>
-      </section>
-    </div>
-  );
-}
-
-function BillingModal({ onClose }: { onClose: () => void }) {
+function BillingModal({
+  billingLimits,
+  tier,
+  onClose,
+}: {
+  billingLimits: BillingLimit[];
+  tier: string;
+  onClose: () => void;
+}) {
   return (
     <div className="gf-settings-billing-modal" role="dialog" aria-modal="true">
       <div className="gf-settings-billing-backdrop" onClick={onClose} />
@@ -773,7 +805,7 @@ function BillingModal({ onClose }: { onClose: () => void }) {
         </button>
 
         <p className="gf-dash-eyebrow">Billing</p>
-        <h2>Free workspace</h2>
+        <h2>{titleCase(tier)} workspace</h2>
         <span>
           Billing is ready as a frontend view. Stripe checkout, invoices, and
           live plan changes can be connected later.
@@ -806,6 +838,57 @@ function BillingModal({ onClose }: { onClose: () => void }) {
       </section>
     </div>
   );
+}
+
+function buildBillingLimits(data: DashboardData | null): BillingLimit[] {
+  return [
+    {
+      label: "Repositories",
+      value: formatLimit(data?.usage.repos.max ?? 5),
+      helper: "tracked repositories",
+      tone: "ocean",
+    },
+    {
+      label: "Devices",
+      value: formatLimit(data?.usage.devices.max ?? 3),
+      helper: "trusted machines",
+      tone: "green",
+    },
+    {
+      label: "Storage",
+      value: formatBytes(data?.usage.storage.maxBytes ?? 500 * 1024 * 1024),
+      helper: "private relay storage",
+      tone: "violet",
+    },
+    {
+      label: "History",
+      value: `${data?.usage.historyDays ?? 30} days`,
+      helper: "sync history retention",
+      tone: "amber",
+    },
+  ];
+}
+
+function formatLimit(value: number | "unlimited") {
+  return value === "unlimited" ? "Unlimited" : String(value);
+}
+
+function formatBytes(bytes: number) {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let index = 0;
+
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+
+  return `${value >= 10 || index === 0 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
+}
+
+function titleCase(value: string) {
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
 
 function SocialDivider() {
@@ -948,20 +1031,6 @@ function CloseIcon() {
         stroke="currentColor"
         strokeWidth="2.2"
         strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M20 6L9 17l-5-5"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </svg>
   );
