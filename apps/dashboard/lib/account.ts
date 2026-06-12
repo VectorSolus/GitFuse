@@ -1,16 +1,23 @@
 import { getSql } from "./db";
 
 type DashboardAccountInput = {
-  githubId: string;
-  githubUsername: string;
+  githubId?: string;
+  githubUsername?: string;
+  providerAccountId?: string;
+  username?: string;
   email: string;
 };
 
 export async function upsertDashboardAccount(input: DashboardAccountInput) {
+  const providerAccountId = input.providerAccountId ?? input.githubId;
+  const username = input.username ?? input.githubUsername ?? input.email.split("@")[0];
+
+  if (!providerAccountId) throw new Error("providerAccountId is required");
+
   const sql = getSql();
   const [user] = await sql<{ id: string; github_username: string; email: string }[]>`
     insert into users (github_id, github_username, email)
-    values (${input.githubId}, ${input.githubUsername}, ${input.email})
+    values (${providerAccountId}, ${username}, ${input.email})
     on conflict (github_id)
     do update set
       github_username = excluded.github_username,

@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 
+import { useDashboardData, type DashboardData } from "@/hooks/use-dashboard-data";
+
 type CommitItem = {
   sha: string;
   message: string;
@@ -12,7 +14,8 @@ type CommitItem = {
 type RepoSyncItem = {
   repo: string;
   branch: string;
-  direction: "sync" | "pull" | "drop" | "rebase-sync";
+  direction: "sync" | "pull" | "drop" | "undo" | "rebase-sync";
+  commitCount: number;
   commits: CommitItem[];
 };
 
@@ -28,178 +31,6 @@ type GraphDay = {
   level: number;
   data?: SyncDay;
 };
-
-const sampleSyncHistory: SyncDay[] = [
-  {
-    date: offsetDate(-2),
-    repositories: [
-      {
-        repo: "gitfuse-dashboard",
-        branch: "main",
-        direction: "sync",
-        commits: [
-          {
-            sha: "a8f31c2",
-            message: "polish dashboard sidebar interaction",
-            author: "Iacon",
-            time: "10:24 AM",
-          },
-          {
-            sha: "b6d91aa",
-            message: "add repository workspace empty state",
-            author: "Iacon",
-            time: "10:31 AM",
-          },
-        ],
-      },
-    ],
-  },
-  {
-    date: offsetDate(-5),
-    repositories: [
-      {
-        repo: "gitfuse-cli",
-        branch: "auth-flow",
-        direction: "sync",
-        commits: [
-          {
-            sha: "c1d48fe",
-            message: "wire device auth command shell",
-            author: "Iacon",
-            time: "7:46 PM",
-          },
-        ],
-      },
-      {
-        repo: "gitfuse-dashboard",
-        branch: "main",
-        direction: "pull",
-        commits: [
-          {
-            sha: "e92f6b0",
-            message: "resume homepage hero layout",
-            author: "Iacon",
-            time: "8:11 PM",
-          },
-        ],
-      },
-    ],
-  },
-  {
-    date: offsetDate(-9),
-    repositories: [
-      {
-        repo: "gitfuse-relay",
-        branch: "dev",
-        direction: "sync",
-        commits: [
-          {
-            sha: "6a4d2c9",
-            message: "prepare relay bundle metadata shape",
-            author: "Iacon",
-            time: "3:18 PM",
-          },
-          {
-            sha: "75ac440",
-            message: "add relay event placeholder types",
-            author: "Iacon",
-            time: "3:27 PM",
-          },
-          {
-            sha: "1e9bf76",
-            message: "document local relay handshake",
-            author: "Iacon",
-            time: "3:42 PM",
-          },
-        ],
-      },
-    ],
-  },
-  {
-    date: offsetDate(-15),
-    repositories: [
-      {
-        repo: "gitfuse-dashboard",
-        branch: "docs",
-        direction: "sync",
-        commits: [
-          {
-            sha: "9f0c3b1",
-            message: "build cli docs frontend page",
-            author: "Iacon",
-            time: "12:04 PM",
-          },
-        ],
-      },
-    ],
-  },
-  {
-    date: offsetDate(-23),
-    repositories: [
-      {
-        repo: "gitfuse-cli",
-        branch: "main",
-        direction: "rebase-sync",
-        commits: [
-          {
-            sha: "3f8c12d",
-            message: "clean command formatter output",
-            author: "Iacon",
-            time: "5:56 PM",
-          },
-          {
-            sha: "49ab20a",
-            message: "add local config discovery",
-            author: "Iacon",
-            time: "6:02 PM",
-          },
-        ],
-      },
-    ],
-  },
-  {
-    date: offsetDate(-34),
-    repositories: [
-      {
-        repo: "gitfuse-dashboard",
-        branch: "auth-ui",
-        direction: "sync",
-        commits: [
-          {
-            sha: "d7a14f0",
-            message: "create email first login flow",
-            author: "Iacon",
-            time: "9:34 AM",
-          },
-        ],
-      },
-    ],
-  },
-  {
-    date: offsetDate(-42),
-    repositories: [
-      {
-        repo: "gitfuse-dashboard",
-        branch: "landing",
-        direction: "sync",
-        commits: [
-          {
-            sha: "0b6a9d5",
-            message: "add aurora homepage background",
-            author: "Iacon",
-            time: "11:22 AM",
-          },
-          {
-            sha: "ce8a302",
-            message: "adjust hero headline spacing",
-            author: "Iacon",
-            time: "11:40 AM",
-          },
-        ],
-      },
-    ],
-  },
-];
 
 const monthLabels = [
   "Jan",
@@ -217,11 +48,13 @@ const monthLabels = [
 ];
 
 export default function HistoryPage() {
+  const { data } = useDashboardData();
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const syncHistory = useMemo(() => buildSyncHistory(data?.history ?? []), [data?.history]);
 
   const historyByDate = useMemo(() => {
-    return new Map(sampleSyncHistory.map((day) => [day.date, day]));
-  }, []);
+    return new Map(syncHistory.map((day) => [day.date, day]));
+  }, [syncHistory]);
 
   const graphDays = useMemo(
     () => buildGraphDays(historyByDate),
@@ -232,25 +65,25 @@ export default function HistoryPage() {
   const selectedCommitCount = selectedDay ? countCommits(selectedDay) : 0;
 
   const totals = useMemo(() => {
-    const syncedDays = sampleSyncHistory.length;
+    const syncedDays = syncHistory.length;
 
     const totalRepos = new Set(
-      sampleSyncHistory.flatMap((day) =>
+      syncHistory.flatMap((day) =>
         day.repositories.map((repo) => repo.repo),
       ),
     ).size;
 
-    const totalCommits = sampleSyncHistory.reduce((dayTotal, day) => {
+    const totalCommits = syncHistory.reduce((dayTotal, day) => {
       return (
         dayTotal +
         day.repositories.reduce(
-          (repoTotal, repo) => repoTotal + repo.commits.length,
+          (repoTotal, repo) => repoTotal + repo.commitCount,
           0,
         )
       );
     }, 0);
 
-    const totalBundles = sampleSyncHistory.reduce(
+    const totalBundles = syncHistory.reduce(
       (total, day) => total + day.repositories.length,
       0,
     );
@@ -261,7 +94,7 @@ export default function HistoryPage() {
       totalCommits,
       totalBundles,
     };
-  }, []);
+  }, [syncHistory]);
 
   return (
     <div className="gf-history-page">
@@ -417,7 +250,7 @@ export default function HistoryPage() {
                       </p>
                     </div>
 
-                    <span>{repo.commits.length}</span>
+                    <span>{repo.commitCount}</span>
                   </div>
 
                   <div className="gf-history-commit-list">
@@ -547,13 +380,9 @@ function getActivityLevel(count: number) {
 
 function countCommits(day: SyncDay) {
   return day.repositories.reduce(
-    (total, repo) => total + repo.commits.length,
+    (total, repo) => total + repo.commitCount,
     0,
   );
-}
-
-function offsetDate(days: number) {
-  return formatDateKey(addDays(startOfDay(new Date()), days));
 }
 
 function startOfDay(date: Date) {
@@ -595,4 +424,37 @@ function formatReadableDate(dateKey: string) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function buildSyncHistory(events: DashboardData["history"]) {
+  const days = new Map<string, SyncDay>();
+
+  events.forEach((event) => {
+    const date = formatDateKey(new Date(event.createdAt));
+    const day = days.get(date) ?? { date, repositories: [] };
+
+    day.repositories.push({
+      repo: event.repositoryName,
+      branch: event.relayEntryId,
+      direction: event.eventType,
+      commitCount: event.commitCount,
+      commits: [
+        {
+          sha: event.id.slice(0, 7),
+          message: `${event.eventType} recorded ${event.commitCount} commit${
+            event.commitCount === 1 ? "" : "s"
+          }`,
+          author: event.deviceName,
+          time: new Date(event.createdAt).toLocaleTimeString("en", {
+            hour: "numeric",
+            minute: "2-digit",
+          }),
+        },
+      ],
+    });
+
+    days.set(date, day);
+  });
+
+  return Array.from(days.values());
 }

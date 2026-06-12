@@ -3,52 +3,67 @@
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 
+import { useDashboardData } from "@/hooks/use-dashboard-data";
+
 const SoftAurora = dynamic(() => import("@/components/effects/SoftAurora"), {
   ssr: false,
 }) as ComponentType<any>;
 
-const metrics = [
-  {
-    label: "Repositories",
-    value: "0 / 5",
-    helper: "free tier tracked repositories",
-  },
-  {
-    label: "Devices",
-    value: "0 / 3",
-    helper: "trusted machines connected",
-  },
-  {
-    label: "Storage",
-    value: "0 B",
-    helper: "of 500 MB included",
-  },
-  {
-    label: "Sync events",
-    value: "0",
-    helper: "relay-side events",
-  },
-];
-
-const activity = [
-  {
-    title: "Relay status",
-    value: "Idle",
-    helper: "No sync bundles received yet.",
-  },
-  {
-    title: "Current plan",
-    value: "Free",
-    helper: "5 repositories · 3 devices · 500 MB storage.",
-  },
-  {
-    title: "Last device",
-    value: "Not linked",
-    helper: "Run gitfuse auth from your machine.",
-  },
-];
-
 export default function DashboardOverviewPage() {
+  const { data } = useDashboardData();
+  const usage = data?.usage;
+  const billing = data?.billing;
+  const activeDevices = data?.devices.filter((device) => device.status === "active") ?? [];
+  const latestDevice = activeDevices[0];
+  const latestEvent = data?.history[0];
+
+  const metrics = [
+    {
+      label: "Repositories",
+      value: `${usage?.repos.current ?? 0} / ${formatLimit(usage?.repos.max ?? 5)}`,
+      helper: `${billing?.tier ?? "free"} tier tracked repositories`,
+    },
+    {
+      label: "Devices",
+      value: `${usage?.devices.current ?? 0} / ${formatLimit(usage?.devices.max ?? 3)}`,
+      helper: "trusted machines connected",
+    },
+    {
+      label: "Storage",
+      value: formatBytes(usage?.storage.currentBytes ?? 0),
+      helper: `of ${formatBytes(usage?.storage.maxBytes ?? 500 * 1024 * 1024)} included`,
+    },
+    {
+      label: "Sync events",
+      value: String(data?.history.length ?? 0),
+      helper: "relay-side events",
+    },
+  ];
+
+  const activity = [
+    {
+      title: "Relay status",
+      value: latestEvent ? "Active" : "Idle",
+      helper: latestEvent
+        ? `${latestEvent.eventType} recorded for ${latestEvent.repositoryName}.`
+        : "No sync bundles received yet.",
+    },
+    {
+      title: "Current plan",
+      value: titleCase(billing?.tier ?? "free"),
+      helper: `${formatLimit(usage?.repos.max ?? 5)} repositories · ${formatLimit(
+        usage?.devices.max ?? 3,
+      )} devices · ${formatBytes(usage?.storage.maxBytes ?? 500 * 1024 * 1024)} storage.`,
+    },
+    {
+      title: "Last device",
+      value: latestDevice?.name ?? "Not linked",
+      helper: latestDevice?.lastActiveAt
+        ? `Last active ${formatDate(latestDevice.lastActiveAt)}.`
+        : "Run gitfuse auth from your machine.",
+    },
+  ];
+
   return (
     <div className="gf-dash-overview-v2">
       <div className="gf-dash-aurora-layer" aria-hidden="true">
@@ -208,4 +223,33 @@ export default function DashboardOverviewPage() {
       </section>
     </div>
   );
+}
+
+function formatLimit(value: number | "unlimited") {
+  return value === "unlimited" ? "unlimited" : String(value);
+}
+
+function formatBytes(bytes: number) {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let index = 0;
+
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+
+  return `${value >= 10 || index === 0 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
+}
+
+function titleCase(value: string) {
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("en", {
+    month: "short",
+    day: "numeric",
+  });
 }

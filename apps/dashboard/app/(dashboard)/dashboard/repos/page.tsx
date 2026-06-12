@@ -1,23 +1,6 @@
-const repoMetrics = [
-  {
-    label: "Total repositories",
-    value: "0",
-    helper: "tracked relay entries",
-    tone: "ocean",
-  },
-  {
-    label: "Synced",
-    value: "0",
-    helper: "repositories up to date",
-    tone: "green",
-  },
-  {
-    label: "Active bundles",
-    value: "0",
-    helper: "waiting in private relay",
-    tone: "violet",
-  },
-];
+"use client";
+
+import { useDashboardData } from "@/hooks/use-dashboard-data";
 
 const repoRows = [
   {
@@ -35,6 +18,35 @@ const repoRows = [
 ];
 
 export default function RepositoriesPage() {
+  const { data } = useDashboardData();
+  const repositories = data?.repositories ?? [];
+  const syncedCount = repositories.filter((repo) => repo.syncState === "synced").length;
+  const activeBundleCount = repositories.reduce(
+    (total, repo) => total + repo.activeBundleCount,
+    0,
+  );
+
+  const repoMetrics = [
+    {
+      label: "Total repositories",
+      value: String(repositories.length),
+      helper: "tracked relay entries",
+      tone: "ocean",
+    },
+    {
+      label: "Synced",
+      value: String(syncedCount),
+      helper: "repositories up to date",
+      tone: "green",
+    },
+    {
+      label: "Active bundles",
+      value: String(activeBundleCount),
+      helper: "waiting in private relay",
+      tone: "violet",
+    },
+  ];
+
   return (
     <div className="gf-repos-page-v3">
       <section className="gf-repos-hero-v3">
@@ -75,7 +87,9 @@ export default function RepositoriesPage() {
               <h3>Your tracked repositories</h3>
             </div>
 
-            <span className="gf-repos-status-pill-v3">Empty</span>
+            <span className="gf-repos-status-pill-v3">
+              {repositories.length > 0 ? "Connected" : "Empty"}
+            </span>
           </div>
 
           <div className="gf-repos-toolbar-v3">
@@ -113,63 +127,85 @@ export default function RepositoriesPage() {
             </select>
           </div>
 
-          <div className="gf-repos-empty-v3">
-            <div className="gf-repos-empty-icon-v3">
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                width="30"
-                height="30"
-                fill="none"
-              >
-                <path
-                  d="M6 3v12"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <circle
-                  cx="6"
-                  cy="5"
-                  r="2"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-                <circle
-                  cx="18"
-                  cy="19"
-                  r="2"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-                <path
-                  d="M6 13c0 3 2 6 6 6h4"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-
-            <h4>No repositories yet</h4>
-            <p>
-              Run <code>gitfuse add .</code> inside a repository and sync your
-              first bundle to make it appear here.
-            </p>
-
+          {repositories.length > 0 ? (
             <div className="gf-repos-command-list-v3">
-              {repoRows.map((row) => (
-                <div key={row.command}>
-                  <span>{row.label}</span>
-                  <code>{row.command}</code>
+              {repositories.map((repo) => (
+                <div key={repo.id}>
+                  <span>{repo.displayName}</span>
+                  <code>
+                    {repo.syncState} · {repo.activeBundleCount} bundles ·{" "}
+                    {repo.lastSyncedAt ? formatDate(repo.lastSyncedAt) : "never synced"}
+                  </code>
                 </div>
               ))}
             </div>
+          ) : (
+            <div className="gf-repos-empty-v3">
+              <div className="gf-repos-empty-icon-v3">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  width="30"
+                  height="30"
+                  fill="none"
+                >
+                  <path
+                    d="M6 3v12"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                  <circle
+                    cx="6"
+                    cy="5"
+                    r="2"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                  <circle
+                    cx="18"
+                    cy="19"
+                    r="2"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                  <path
+                    d="M6 13c0 3 2 6 6 6h4"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </div>
 
-            <a href="/docs">Open documentation</a>
-          </div>
+              <h4>No repositories yet</h4>
+              <p>
+                Run <code>gitfuse add .</code> inside a repository and sync your
+                first bundle to make it appear here.
+              </p>
+
+              <div className="gf-repos-command-list-v3">
+                {repoRows.map((row) => (
+                  <div key={row.command}>
+                    <span>{row.label}</span>
+                    <code>{row.command}</code>
+                  </div>
+                ))}
+              </div>
+
+              <a href="/docs">Open documentation</a>
+            </div>
+          )}
         </article>
       </section>
     </div>
   );
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }

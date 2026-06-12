@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+
+import { useDashboardData } from "@/hooks/use-dashboard-data";
 
 type Plan = {
   name: string;
+  tier: "free" | "pro" | "team";
   price: string;
   description: string;
   badge: string;
@@ -17,12 +20,14 @@ type Plan = {
   }[];
 };
 
-const plans: Plan[] = [
+function buildPlans(currentTier: string): Plan[] {
+  return [
   {
     name: "Free",
+    tier: "free",
     price: "$0",
-    badge: "Current plan",
-    current: true,
+    badge: currentTier === "free" ? "Current plan" : "Included",
+    current: currentTier === "free",
     description:
       "For personal testing, local development, and small private sync workflows.",
     features: [
@@ -41,30 +46,34 @@ const plans: Plan[] = [
   },
   {
     name: "Pro",
-    price: "$12",
-    badge: "Recommended",
+    tier: "pro",
+    price: "$9/mo",
+    badge: currentTier === "pro" ? "Current plan" : "Recommended",
+    current: currentTier === "pro",
     highlighted: true,
     description:
       "For developers who move across machines and want larger private sync capacity.",
     features: [
       "Unlimited private repositories",
-      "More trusted devices",
-      "5 GB relay storage",
+      "Unlimited trusted devices",
+      "50 GB relay storage",
       "365 days sync history",
-      "Larger encrypted bundles",
+      "500 MB bundle size",
       "Priority workspace limits",
     ],
     limits: [
       { label: "Repositories", value: "Unlimited" },
-      { label: "Devices", value: "10" },
-      { label: "Storage", value: "5 GB" },
+      { label: "Devices", value: "Unlimited" },
+      { label: "Storage", value: "50 GB" },
       { label: "History", value: "365 days" },
     ],
   },
   {
     name: "Team",
-    price: "Custom",
-    badge: "Upcoming",
+    tier: "team",
+    price: "$18/user/mo",
+    badge: currentTier === "team" ? "Current plan" : "Upcoming",
+    current: currentTier === "team",
     description:
       "For teams that need shared workspace controls, audit history, and managed access.",
     features: [
@@ -82,7 +91,8 @@ const plans: Plan[] = [
       { label: "History", value: "Custom" },
     ],
   },
-];
+  ];
+}
 
 const comparisonRows = [
   {
@@ -100,13 +110,13 @@ const comparisonRows = [
   {
     feature: "Trusted devices",
     free: "3",
-    pro: "10",
+    pro: "Unlimited",
     team: "Custom",
   },
   {
     feature: "Relay storage",
     free: "500 MB",
-    pro: "5 GB",
+    pro: "50 GB",
     team: "Custom",
   },
   {
@@ -124,7 +134,39 @@ const comparisonRows = [
 ];
 
 export default function UpgradePage() {
+  const { data } = useDashboardData();
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutMessage, setCheckoutMessage] = useState("");
+  const currentTier = data?.billing.tier ?? "free";
+  const plans = useMemo(() => buildPlans(currentTier), [currentTier]);
+
+  async function handleUpgrade(plan: Plan) {
+    if (plan.tier === "free") return;
+    setCheckoutMessage("");
+
+    try {
+      const response = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tier: plan.tier }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        url?: string;
+        message?: string;
+      };
+
+      if (payload.url) {
+        window.location.href = payload.url;
+        return;
+      }
+
+      setCheckoutMessage(payload.message ?? "Stripe checkout will be wired after deployment.");
+      setCheckoutOpen(true);
+    } catch {
+      setCheckoutMessage("Stripe checkout will be wired after deployment.");
+      setCheckoutOpen(true);
+    }
+  }
 
   return (
     <div className="gf-upgrade-page">
@@ -141,8 +183,12 @@ export default function UpgradePage() {
 
         <div className="gf-upgrade-current-card">
           <p>Current plan</p>
-          <strong>Free</strong>
-          <span>5 repositories · 3 devices · 500 MB storage</span>
+          <strong>{titleCase(currentTier)}</strong>
+          <span>
+            {formatLimit(data?.usage.repos.max ?? 5)} repositories ·{" "}
+            {formatLimit(data?.usage.devices.max ?? 3)} devices ·{" "}
+            {formatBytes(data?.usage.storage.maxBytes ?? 500 * 1024 * 1024)} storage
+          </span>
           <Link href="/dashboard/settings?section=billing">
             Billing settings
           </Link>
@@ -187,7 +233,7 @@ export default function UpgradePage() {
                 Current plan
               </button>
             ) : (
-              <button type="button" onClick={() => setCheckoutOpen(true)}>
+              <button type="button" onClick={() => handleUpgrade(plan)}>
                 {plan.name === "Team" ? "Contact later" : "Upgrade"}
               </button>
             )}
@@ -240,13 +286,22 @@ export default function UpgradePage() {
       </section>
 
       {checkoutOpen ? (
-        <UpgradeModal onClose={() => setCheckoutOpen(false)} />
+        <UpgradeModal
+          message={checkoutMessage}
+          onClose={() => setCheckoutOpen(false)}
+        />
       ) : null}
     </div>
   );
 }
 
-function UpgradeModal({ onClose }: { onClose: () => void }) {
+function UpgradeModal({
+  message,
+  onClose,
+}: {
+  message: string;
+  onClose: () => void;
+}) {
   return (
     <div className="gf-upgrade-modal" role="dialog" aria-modal="true">
       <div className="gf-upgrade-modal-backdrop" onClick={onClose} />
@@ -264,8 +319,8 @@ function UpgradeModal({ onClose }: { onClose: () => void }) {
         <p className="gf-dash-eyebrow">Upgrade</p>
         <h2>Checkout will be connected later.</h2>
         <span>
-          The frontend upgrade flow is ready. Once Stripe is wired, this button
-          can create a checkout session and redirect the user securely.
+          {message ||
+            "The frontend upgrade flow is ready. Once Stripe is wired, this button can create a checkout session and redirect the user securely."}
         </span>
 
         <div className="gf-upgrade-modal-actions">
@@ -280,6 +335,28 @@ function UpgradeModal({ onClose }: { onClose: () => void }) {
       </section>
     </div>
   );
+}
+
+function formatLimit(value: number | "unlimited") {
+  return value === "unlimited" ? "Unlimited" : String(value);
+}
+
+function formatBytes(bytes: number) {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let index = 0;
+
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+
+  return `${value >= 10 || index === 0 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
+}
+
+function titleCase(value: string) {
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
 
 function CheckIcon() {

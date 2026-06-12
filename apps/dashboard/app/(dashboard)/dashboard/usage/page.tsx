@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 
+import { useDashboardData, type DashboardData } from "@/hooks/use-dashboard-data";
+
 type UsageMetricId = "repositories" | "devices" | "storage" | "history" | "bundle";
 
 type UsageDetailRow = {
@@ -24,174 +26,21 @@ type UsageMetric = {
   rows: UsageDetailRow[];
 };
 
-const usageMetrics: UsageMetric[] = [
-  {
-    id: "repositories",
-    label: "Repositories",
-    value: 3,
-    limit: 5,
-    unit: "repos",
-    helper: "tracked repositories",
-    detail:
-      "Repositories show the Git workspaces currently tracked by GitFuse. The count includes repositories that have been added through the CLI and are ready for private sync.",
-    tone: "ocean",
-    rowsTitle: "Synced repositories",
-    emptyText: "No repositories have been synced yet.",
-    rows: [
-      {
-        name: "gitfuse-dashboard",
-        meta: "main branch",
-        value: "8 commits",
-      },
-      {
-        name: "gitfuse-cli",
-        meta: "auth-flow branch",
-        value: "3 commits",
-      },
-      {
-        name: "relay-service",
-        meta: "transport branch",
-        value: "2 commits",
-      },
-    ],
-  },
-  {
-    id: "devices",
-    label: "Devices",
-    value: 2,
-    limit: 3,
-    unit: "devices",
-    helper: "trusted machines",
-    detail:
-      "Devices are trusted machines linked to your GitFuse account. Each device can push or pull private commit bundles after authentication.",
-    tone: "green",
-    rowsTitle: "Linked devices",
-    emptyText: "No devices are linked yet.",
-    rows: [
-      {
-        name: "Piyush’s MacBook Pro",
-        meta: "Last active today",
-        value: "Primary",
-      },
-      {
-        name: "Workstation",
-        meta: "Last active yesterday",
-        value: "Trusted",
-      },
-    ],
-  },
-  {
-    id: "storage",
-    label: "Storage",
-    value: 126,
-    limit: 500,
-    unit: "MB",
-    helper: "private relay storage",
-    detail:
-      "Storage is used by encrypted commit bundles waiting in the private relay. Cleaning old bundles or upgrading the plan can increase available space later.",
-    tone: "violet",
-    rowsTitle: "Storage breakdown",
-    emptyText: "No storage has been used yet.",
-    rows: [
-      {
-        name: "Commit bundles",
-        meta: "Encrypted relay payloads",
-        value: "96 MB",
-      },
-      {
-        name: "Sync metadata",
-        meta: "Repository and device indexes",
-        value: "18 MB",
-      },
-      {
-        name: "History records",
-        meta: "Recent sync events",
-        value: "12 MB",
-      },
-    ],
-  },
-  {
-    id: "history",
-    label: "History retention",
-    value: 30,
-    limit: 365,
-    unit: "days",
-    helper: "history kept on free tier",
-    detail:
-      "History retention controls how long sync events remain visible in the dashboard. Free workspaces currently keep the latest 30 days.",
-    tone: "amber",
-    rowsTitle: "History coverage",
-    emptyText: "No sync history is available yet.",
-    rows: [
-      {
-        name: "Current retention",
-        meta: "Free workspace limit",
-        value: "30 days",
-      },
-      {
-        name: "Oldest visible event",
-        meta: "Based on current retention",
-        value: "May 13",
-      },
-      {
-        name: "Available with Pro",
-        meta: "Future billing connection",
-        value: "365 days",
-      },
-    ],
-  },
-  {
-    id: "bundle",
-    label: "Bundle size limit",
-    value: 50,
-    limit: 250,
-    unit: "MB",
-    helper: "maximum per sync",
-    detail:
-      "Bundle size is the maximum encrypted payload GitFuse can move in a single sync operation. Larger bundles can be enabled later through billing.",
-    tone: "blue",
-    rowsTitle: "Recent bundle sizes",
-    emptyText: "No bundles have been created yet.",
-    rows: [
-      {
-        name: "gitfuse-dashboard",
-        meta: "Latest sync bundle",
-        value: "18 MB",
-      },
-      {
-        name: "gitfuse-cli",
-        meta: "Latest sync bundle",
-        value: "7 MB",
-      },
-      {
-        name: "relay-service",
-        meta: "Latest sync bundle",
-        value: "31 MB",
-      },
-    ],
-  },
-];
-
-const planFeatures = [
-  "5 tracked repositories",
-  "3 trusted devices",
-  "500 MB relay storage",
-  "30 days sync history",
-  "50 MB bundle size",
-];
-
 const proFeatures = [
   "Unlimited private repositories",
-  "More trusted devices",
+  "Unlimited trusted devices",
   "365 days sync history",
-  "Larger encrypted bundles",
-  "Priority workspace limits",
+  "500 MB bundle size",
+  "50 GB relay storage",
 ];
 
 export default function UsagePage() {
+  const { data } = useDashboardData();
   const [selectedMetricId, setSelectedMetricId] =
     useState<UsageMetricId>("repositories");
   const [billingOpen, setBillingOpen] = useState(false);
+  const usageMetrics = useMemo(() => buildUsageMetrics(data), [data]);
+  const planFeatures = useMemo(() => buildPlanFeatures(data), [data]);
 
   const selectedMetric = useMemo(() => {
     return usageMetrics.find((metric) => metric.id === selectedMetricId);
@@ -359,9 +208,9 @@ export default function UsagePage() {
       </section>
 
       <section className="gf-usage-billing-strip">
-        <div>
-          <p className="gf-dash-eyebrow">Billing</p>
-          <strong>Free tier active</strong>
+          <div>
+            <p className="gf-dash-eyebrow">Billing</p>
+          <strong>{titleCase(data?.billing.tier ?? "free")} tier active</strong>
           <span>
             Plan changes are available from billing when the backend connection
             is ready.
@@ -445,4 +294,159 @@ function BillingModal({ onClose }: { onClose: () => void }) {
 function getPercent(value: number, limit: number) {
   if (limit <= 0) return 0;
   return Math.min(100, Math.round((value / limit) * 100));
+}
+
+function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
+  const usage = data?.usage;
+  const repos = data?.repositories ?? [];
+  const devices = data?.devices ?? [];
+  const history = data?.history ?? [];
+  const repoLimit = usage?.repos.max === "unlimited" ? Math.max(usage.repos.current, 1) : usage?.repos.max ?? 5;
+  const deviceLimit =
+    usage?.devices.max === "unlimited" ? Math.max(usage.devices.current, 1) : usage?.devices.max ?? 3;
+  const storageLimitMb = bytesToMb(usage?.storage.maxBytes ?? 500 * 1024 * 1024);
+  const storageCurrentMb = bytesToMb(usage?.storage.currentBytes ?? 0);
+  const bundleLimitMb = bytesToMb(usage?.bundleSize.maxBytes ?? 50 * 1024 * 1024);
+
+  return [
+    {
+      id: "repositories",
+      label: "Repositories",
+      value: usage?.repos.current ?? 0,
+      limit: repoLimit,
+      unit: "repos",
+      helper: "tracked repositories",
+      detail:
+        "Repositories show the Git workspaces currently tracked by GitFuse. The count includes repositories that have been added through the CLI and are ready for private sync.",
+      tone: "ocean",
+      rowsTitle: "Synced repositories",
+      emptyText: "No repositories have been synced yet.",
+      rows: repos.map((repo) => ({
+        name: repo.displayName,
+        meta: repo.relayEntryId,
+        value: `${repo.activeBundleCount} bundles`,
+      })),
+    },
+    {
+      id: "devices",
+      label: "Devices",
+      value: usage?.devices.current ?? 0,
+      limit: deviceLimit,
+      unit: "devices",
+      helper: "trusted machines",
+      detail:
+        "Devices are trusted machines linked to your GitFuse account. Each device can push or pull private commit bundles after authentication.",
+      tone: "green",
+      rowsTitle: "Linked devices",
+      emptyText: "No devices are linked yet.",
+      rows: devices.map((device) => ({
+        name: device.name,
+        meta: device.lastActiveAt ? `Last active ${formatDate(device.lastActiveAt)}` : "No activity recorded",
+        value: device.status,
+      })),
+    },
+    {
+      id: "storage",
+      label: "Storage",
+      value: storageCurrentMb,
+      limit: storageLimitMb,
+      unit: "MB",
+      helper: "private relay storage",
+      detail:
+        "Storage is used by encrypted commit bundles waiting in the private relay. Cleaning old bundles or upgrading the plan can increase available space later.",
+      tone: "violet",
+      rowsTitle: "Storage breakdown",
+      emptyText: "No storage has been used yet.",
+      rows: repos
+        .filter((repo) => repo.activeStorageBytes > 0)
+        .map((repo) => ({
+          name: repo.displayName,
+          meta: "Encrypted relay payloads",
+          value: formatBytes(repo.activeStorageBytes),
+        })),
+    },
+    {
+      id: "history",
+      label: "History retention",
+      value: usage?.historyDays ?? 30,
+      limit: usage?.historyDays ?? 30,
+      unit: "days",
+      helper: "history kept on current tier",
+      detail:
+        "History retention controls how long sync events remain visible in the dashboard. Current plan limits come from the workspace billing tier.",
+      tone: "amber",
+      rowsTitle: "History coverage",
+      emptyText: "No sync history is available yet.",
+      rows: history.map((event) => ({
+        name: event.repositoryName,
+        meta: `${event.eventType} by ${event.deviceName}`,
+        value: formatDate(event.createdAt),
+      })),
+    },
+    {
+      id: "bundle",
+      label: "Bundle size limit",
+      value: bundleLimitMb,
+      limit: bundleLimitMb,
+      unit: "MB",
+      helper: "maximum per sync",
+      detail:
+        "Bundle size is the maximum encrypted payload GitFuse can move in a single sync operation. Larger bundles can be enabled later through billing.",
+      tone: "blue",
+      rowsTitle: "Recent bundle sizes",
+      emptyText: "No bundles have been created yet.",
+      rows: repos
+        .filter((repo) => repo.activeBundleCount > 0)
+        .map((repo) => ({
+          name: repo.displayName,
+          meta: `${repo.activeBundleCount} active bundles`,
+          value: formatBytes(repo.activeStorageBytes),
+        })),
+    },
+  ];
+}
+
+function buildPlanFeatures(data: DashboardData | null) {
+  const usage = data?.usage;
+  return [
+    `${formatLimit(usage?.repos.max ?? 5)} tracked repositories`,
+    `${formatLimit(usage?.devices.max ?? 3)} trusted devices`,
+    `${formatBytes(usage?.storage.maxBytes ?? 500 * 1024 * 1024)} relay storage`,
+    `${usage?.historyDays ?? 30} days sync history`,
+    `${formatBytes(usage?.bundleSize.maxBytes ?? 50 * 1024 * 1024)} bundle size`,
+  ];
+}
+
+function bytesToMb(bytes: number) {
+  return Math.round(bytes / (1024 * 1024));
+}
+
+function formatBytes(bytes: number) {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let index = 0;
+
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+
+  return `${value >= 10 || index === 0 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
+}
+
+function formatLimit(value: number | "unlimited") {
+  return value === "unlimited" ? "Unlimited" : String(value);
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function titleCase(value: string) {
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }

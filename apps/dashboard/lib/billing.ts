@@ -38,6 +38,10 @@ type CheckoutInput = AccountLookup & {
   checkoutLog?: string | null;
 };
 
+export type CheckoutResult =
+  | { url: string }
+  | { error: "stripe_not_configured"; message: "Stripe not configured for local development." };
+
 type StripeInvoice = {
   id: string;
   number?: string | null;
@@ -59,6 +63,10 @@ function toIso(value: Date | string | null) {
 
 function stripeKey() {
   return process.env.STRIPE_SECRET_KEY;
+}
+
+function isLocalPlaceholderPrice(priceId?: string | null) {
+  return !priceId || priceId === "price_local_placeholder";
 }
 
 function planFromPrice(priceId?: string | null): PlanTier | null {
@@ -137,8 +145,14 @@ export async function getDashboardBilling(account: AccountLookup, options: { fix
   return billing;
 }
 
-export async function createBillingCheckoutSession(input: CheckoutInput) {
+export async function createBillingCheckoutSession(input: CheckoutInput): Promise<CheckoutResult> {
   const priceId = process.env[stripePriceEnv[input.tier]];
+  if (process.env.NODE_ENV !== "production" && isLocalPlaceholderPrice(priceId)) {
+    return {
+      error: "stripe_not_configured",
+      message: "Stripe not configured for local development."
+    };
+  }
   if (!priceId) throw new Error(`${stripePriceEnv[input.tier]} is required`);
 
   if (process.env.NODE_ENV !== "production" && input.checkoutLog) {

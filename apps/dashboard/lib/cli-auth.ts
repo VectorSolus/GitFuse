@@ -20,7 +20,7 @@ export async function approveCliAuthSession(input: ApproveCliAuthInput) {
     return { approved: true };
   }
 
-  const relayURL = process.env.RELAY_URL ?? "http://localhost:8787";
+  const relayURL = process.env.GITFUSE_RELAY_URL ?? process.env.RELAY_URL ?? "http://localhost:8787";
   const response = await fetch(`${relayURL.replace(/\/$/, "")}/v1/auth/approve`, {
     method: "POST",
     headers: { "content-type": "application/json" },

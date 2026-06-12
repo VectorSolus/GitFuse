@@ -1,23 +1,6 @@
-const deviceMetrics = [
-  {
-    label: "Trusted devices",
-    value: "0 / 3",
-    helper: "machines linked to this workspace",
-    tone: "ocean",
-  },
-  {
-    label: "Active sessions",
-    value: "0",
-    helper: "currently authenticated clients",
-    tone: "green",
-  },
-  {
-    label: "Pending approvals",
-    value: "0",
-    helper: "device requests waiting for approval",
-    tone: "violet",
-  },
-];
+"use client";
+
+import { useDashboardData } from "@/hooks/use-dashboard-data";
 
 const setupSteps = [
   {
@@ -53,6 +36,32 @@ const securityItems = [
 ];
 
 export default function DevicesPage() {
+  const { data } = useDashboardData();
+  const devices = data?.devices ?? [];
+  const trustedDevices = devices.filter((device) => device.status === "active");
+  const activeDeviceCount = trustedDevices.filter((device) => device.lastActiveAt).length;
+
+  const deviceMetrics = [
+    {
+      label: "Trusted devices",
+      value: `${trustedDevices.length} / ${formatLimit(data?.usage.devices.max ?? 3)}`,
+      helper: "machines linked to this workspace",
+      tone: "ocean",
+    },
+    {
+      label: "Active sessions",
+      value: String(activeDeviceCount),
+      helper: "currently authenticated clients",
+      tone: "green",
+    },
+    {
+      label: "Pending approvals",
+      value: "0",
+      helper: "device requests waiting for approval",
+      tone: "violet",
+    },
+  ];
+
   return (
     <div className="gf-devices-page">
       <section className="gf-devices-hero">
@@ -96,7 +105,9 @@ export default function DevicesPage() {
               <h3>Trusted machines</h3>
             </div>
 
-            <span className="gf-devices-status-pill">Empty</span>
+            <span className="gf-devices-status-pill">
+              {devices.length > 0 ? "Connected" : "Empty"}
+            </span>
           </div>
 
           <div className="gf-devices-toolbar">
@@ -134,63 +145,79 @@ export default function DevicesPage() {
             </select>
           </div>
 
-          <div className="gf-devices-empty">
-            <div className="gf-devices-empty-icon">
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                width="30"
-                height="30"
-                fill="none"
-              >
-                <rect
-                  x="3"
-                  y="4"
-                  width="13"
-                  height="10"
-                  rx="2"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-                <rect
-                  x="17"
-                  y="8"
-                  width="4"
-                  height="12"
-                  rx="1.5"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-                <path
-                  d="M7 20h6"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M10 14v6"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-
-            <h4>No devices linked yet</h4>
-            <p>
-              Run <code>gitfuse auth</code> on a machine to create its trusted
-              device identity and connect it to this workspace.
-            </p>
-
+          {devices.length > 0 ? (
             <div className="gf-devices-command-list">
-              {setupSteps.map((step) => (
-                <div key={step.command}>
-                  <span>{step.title}</span>
-                  <code>{step.command}</code>
+              {devices.map((device) => (
+                <div key={device.id}>
+                  <span>{device.name}</span>
+                  <code>
+                    {device.status} ·{" "}
+                    {device.lastActiveAt
+                      ? `last active ${formatDate(device.lastActiveAt)}`
+                      : "not active yet"}
+                  </code>
                 </div>
               ))}
             </div>
-          </div>
+          ) : (
+            <div className="gf-devices-empty">
+              <div className="gf-devices-empty-icon">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  width="30"
+                  height="30"
+                  fill="none"
+                >
+                  <rect
+                    x="3"
+                    y="4"
+                    width="13"
+                    height="10"
+                    rx="2"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                  <rect
+                    x="17"
+                    y="8"
+                    width="4"
+                    height="12"
+                    rx="1.5"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                  <path
+                    d="M7 20h6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M10 14v6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </div>
+
+              <h4>No devices linked yet</h4>
+              <p>
+                Run <code>gitfuse auth</code> on a machine to create its trusted
+                device identity and connect it to this workspace.
+              </p>
+
+              <div className="gf-devices-command-list">
+                {setupSteps.map((step) => (
+                  <div key={step.command}>
+                    <span>{step.title}</span>
+                    <code>{step.command}</code>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </article>
 
         <aside className="gf-devices-panel gf-devices-security-panel">
@@ -217,4 +244,16 @@ export default function DevicesPage() {
       </section>
     </div>
   );
+}
+
+function formatLimit(value: number | "unlimited") {
+  return value === "unlimited" ? "unlimited" : String(value);
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }

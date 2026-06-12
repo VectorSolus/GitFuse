@@ -21,8 +21,8 @@ export async function POST(request: Request) {
     tier: body.tier,
     email,
     username: session?.user?.name,
-    successUrl: `${url.origin}/dashboard/billing?checkout=success`,
-    cancelUrl: `${url.origin}/dashboard/billing?checkout=cancelled`,
+    successUrl: `${url.origin}/dashboard/upgrade?checkout=success`,
+    cancelUrl: `${url.origin}/dashboard/upgrade?checkout=cancelled`,
     checkoutLog: body.checkoutLog
   });
 
