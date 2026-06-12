@@ -142,3 +142,21 @@ export const cliAuthSessions = pgTable(
     codeUnique: unique("cli_auth_sessions_code_unique").on(table.code)
   })
 );
+
+export const emailVerificationOtps = pgTable(
+  "email_verification_otps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    otpCode: text("otp_code").notNull(),
+    purpose: text("purpose").notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    emailPurposeIdx: index("email_verification_otps_email_purpose_idx").on(table.email, table.purpose),
+    userIdIdx: index("email_verification_otps_user_id_idx").on(table.userId)
+  })
+);
