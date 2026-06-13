@@ -1,13 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
-import type { FormEvent } from "react";
+import type {
+  ClipboardEvent,
+  FormEvent,
+  KeyboardEvent,
+} from "react";
 
 import { useDashboardData, type DashboardData } from "@/hooks/use-dashboard-data";
-import { deleteCurrentAccountAction } from "./actions";
+import {
+  deleteCurrentAccountAction,
+  requestDeleteAccountOtp,
+  requestEmailOtp,
+  verifyEmailOtp,
+} from "./actions";
 
 type SettingsSection =
   | "Profile"
@@ -518,13 +527,10 @@ function AddEmailModal({ onClose }: { onClose: () => void }) {
     setFeedback("");
 
     try {
-      const response = await fetch("/api/auth/otp/request", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password, purpose: "add_email" }),
-      });
-
-      if (!response.ok) throw new Error("Could not send verification code.");
+      const result = await requestEmailOtp(email);
+      if (!result.ok) {
+        throw new Error(result.error ?? "Could not send verification code.");
+      }
       setStep("otp");
       setFeedback("Verification code sent.");
     } catch (error) {
@@ -541,13 +547,12 @@ function AddEmailModal({ onClose }: { onClose: () => void }) {
     setFeedback("");
 
     try {
-      const response = await fetch("/api/auth/otp/verify", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, code: otp, purpose: "add_email" }),
-      });
-
-      if (!response.ok) throw new Error("Verification code is invalid or expired.");
+      const result = await verifyEmailOtp(email, otp);
+      if (!result.ok) {
+        throw new Error(
+          result.error ?? "Verification code is invalid or expired.",
+        );
+      }
       onClose();
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Verification code is invalid or expired.");
@@ -702,24 +707,116 @@ function DeleteAccountModal({
   email: string;
   onClose: () => void;
 }) {
-  const [confirmationEmail, setConfirmationEmail] = useState("");
+  const [step, setStep] = useState<"confirm" | "otp">("confirm");
+  const [verifiedEmail, setVerifiedEmail] = useState(email);
+  const [otpDigits, setOtpDigits] = useState(Array<string>(6).fill(""));
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  const canDelete =
-    confirmationEmail.trim().toLowerCase() === email.toLowerCase();
+  const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const otpCode = otpDigits.join("");
+
+  useEffect(() => {
+    if (step !== "otp") return;
+    otpInputRefs.current[0]?.focus();
+  }, [step]);
+
+  async function handleConfirmDelete() {
+    if (pending) return;
+
+    setPending(true);
+    setError("");
+    const result = await requestDeleteAccountOtp();
+    setPending(false);
+
+    if (!result.ok || !result.email) {
+      setError(result.error ?? "Could not send verification code.");
+      return;
+    }
+
+    setVerifiedEmail(result.email);
+    setOtpDigits(Array<string>(6).fill(""));
+    setStep("otp");
+  }
+
+  function handleOtpChange(index: number, value: string) {
+    setError("");
+    const digit = value.replace(/\D/g, "").slice(-1);
+    if (!digit) return;
+
+    setOtpDigits((current) => {
+      const next = [...current];
+      next[index] = digit;
+      return next;
+    });
+
+    if (index < 5) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  }
+
+  function handleOtpKeyDown(
+    index: number,
+    event: KeyboardEvent<HTMLInputElement>,
+  ) {
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      setError("");
+
+      setOtpDigits((current) => {
+        const next = [...current];
+
+        if (next[index]) {
+          next[index] = "";
+          return next;
+        }
+
+        if (index > 0) {
+          next[index - 1] = "";
+        }
+
+        return next;
+      });
+
+      if (!otpDigits[index] && index > 0) {
+        otpInputRefs.current[index - 1]?.focus();
+      }
+      return;
+    }
+
+    if (event.key.length === 1 && !/^\d$/.test(event.key)) {
+      event.preventDefault();
+    }
+  }
+
+  function handleOtpPaste(event: ClipboardEvent<HTMLInputElement>) {
+    event.preventDefault();
+    const digits = event.clipboardData
+      .getData("text")
+      .replace(/\D/g, "")
+      .slice(0, 6);
+
+    if (!digits) return;
+
+    setError("");
+    const next = Array<string>(6).fill("");
+    digits.split("").forEach((digit, index) => {
+      next[index] = digit;
+    });
+    setOtpDigits(next);
+    otpInputRefs.current[Math.min(digits.length, 5)]?.focus();
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!canDelete || pending) {
-      setError("Email confirmation does not match this account.");
-      return;
-    }
+    if (otpCode.length !== 6 || pending) return;
 
     setPending(true);
     setError("");
 
-    const result = await deleteCurrentAccountAction({ confirmationEmail });
+    const result = await deleteCurrentAccountAction({
+      otpCode,
+    });
 
     if (!result.ok) {
       setPending(false);
@@ -744,38 +841,81 @@ function DeleteAccountModal({
           <CloseIcon />
         </button>
 
-        <p className="gf-dash-eyebrow">Delete account</p>
-        <h2>Confirm account deletion.</h2>
-        <span>
-          Enter your email address to confirm this action:
-          <strong> {email}</strong>
-        </span>
+        {step === "confirm" ? (
+          <>
+            <p className="gf-dash-eyebrow">Delete account</p>
+            <h2>Are you sure you want to delete your account?</h2>
+            <span>This action is permanent and cannot be undone.</span>
 
-        <label className="gf-delete-account-field">
-          Confirmation email
-          <input
-            type="email"
-            value={confirmationEmail}
-            placeholder={email}
-            onChange={(event) => {
-              setConfirmationEmail(event.target.value);
-              setError("");
-            }}
-            autoFocus
-          />
-        </label>
+            {error ? (
+              <span className="gf-delete-error-text">{error}</span>
+            ) : null}
 
-        {error ? <span>{error}</span> : null}
+            <div className="gf-delete-account-actions">
+              <button type="button" onClick={onClose}>
+                Cancel
+              </button>
 
-        <div className="gf-delete-account-actions">
-          <button type="button" onClick={onClose}>
-            Cancel
-          </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={pending}
+              >
+                {pending ? "Sending code..." : "Delete"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="gf-dash-eyebrow">Delete account</p>
+            <h2>Verify account deletion</h2>
+            <span>
+              We sent a verification code to{" "}
+              <strong>{verifiedEmail}</strong>.
+            </span>
 
-          <button type="submit" disabled={!canDelete || pending}>
-            {pending ? "Deleting..." : "Delete account"}
-          </button>
-        </div>
+            <div
+              className="gf-delete-otp-inputs"
+              aria-label="Delete account verification code"
+            >
+              {otpDigits.map((digit, index) => (
+                <input
+                  key={index}
+                  ref={(element) => {
+                    otpInputRefs.current[index] = element;
+                  }}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={1}
+                  value={digit}
+                  onChange={(event) =>
+                    handleOtpChange(index, event.target.value)
+                  }
+                  onKeyDown={(event) => handleOtpKeyDown(index, event)}
+                  onPaste={handleOtpPaste}
+                  aria-label={`Verification digit ${index + 1}`}
+                />
+              ))}
+            </div>
+
+            {error ? (
+              <span className="gf-delete-error-text">{error}</span>
+            ) : null}
+
+            <div className="gf-delete-account-actions">
+              <button type="button" onClick={onClose}>
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={otpCode.length !== 6 || pending}
+              >
+                {pending ? "Deleting..." : "Delete account"}
+              </button>
+            </div>
+          </>
+        )}
       </form>
     </div>
   );

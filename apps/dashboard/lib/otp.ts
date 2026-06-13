@@ -28,6 +28,28 @@ export function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+export async function isOtpCooldownActive(
+  userId: string,
+  email: string,
+  purpose: OtpPurpose,
+  cooldownSeconds = 60,
+) {
+  const normalizedEmail = normalizeEmail(email);
+  const sql = getSql();
+  const [recent] = await sql<{ exists: boolean }[]>`
+    select exists (
+      select 1
+      from email_verification_otps
+      where user_id = ${userId}
+        and email = ${normalizedEmail}
+        and purpose = ${purpose}
+        and created_at > now() - (${cooldownSeconds} * interval '1 second')
+    ) as exists
+  `;
+
+  return recent?.exists ?? false;
+}
+
 export async function createOtp(userId: string | null, email: string, purpose: OtpPurpose): Promise<string> {
   const normalizedEmail = normalizeEmail(email);
   const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
@@ -99,7 +121,7 @@ export async function verifyOtp(
 ): Promise<boolean> {
   const normalizedEmail = normalizeEmail(email);
   const normalizedCode = code.trim();
-  if (!normalizedCode) return false;
+  if (!/^\d{6}$/.test(normalizedCode)) return false;
 
   const sql = getSql();
   const [otp] = await sql<{ id: string; otp_code: string }[]>`

@@ -7747,6 +7747,37 @@ body {
   box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.1);
 }
 
+.gf-delete-otp-inputs {
+  margin-top: 1.35rem;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.gf-delete-otp-inputs input {
+  width: 100%;
+  aspect-ratio: 1;
+  min-width: 0;
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  border-radius: 0.9rem;
+  color: white;
+  background: rgba(2, 8, 23, 0.58);
+  text-align: center;
+  font-size: 1.2rem;
+  font-weight: 900;
+  outline: none;
+}
+
+.gf-delete-otp-inputs input:focus {
+  border-color: rgba(248, 113, 113, 0.55);
+  box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.1);
+}
+
+.gf-auth-error-text,
+.gf-delete-error-text {
+  color: #f87171 !important;
+}
+
 .gf-delete-account-actions {
   margin-top: 1.2rem;
   display: flex;

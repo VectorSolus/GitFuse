@@ -140,6 +140,7 @@ export default function LoginPage() {
   }
 
   function handleOtpChange(index: number, value: string) {
+    setFeedback("");
     const digit = value.replace(/\D/g, "").slice(-1);
     if (!digit) return;
 
@@ -160,6 +161,7 @@ export default function LoginPage() {
   ) {
     if (event.key === "Backspace") {
       event.preventDefault();
+      setFeedback("");
 
       setOtpDigits((current) => {
         const next = [...current];
@@ -196,6 +198,7 @@ export default function LoginPage() {
 
     if (!digits) return;
 
+    setFeedback("");
     const next = Array<string>(6).fill("");
     digits.split("").forEach((digit, index) => {
       next[index] = digit;
@@ -227,7 +230,7 @@ export default function LoginPage() {
       return;
     }
 
-    setFeedback("Verification code is invalid or expired.");
+    setFeedback("Incorrect verification code.");
   }
 
   return (
@@ -314,7 +317,9 @@ export default function LoginPage() {
               ))}
             </div>
 
-            {feedback ? <p className="gf-otp-copy">{feedback}</p> : null}
+            {feedback ? (
+              <p className="gf-otp-copy gf-auth-error-text">{feedback}</p>
+            ) : null}
 
             <button
               type="button"
