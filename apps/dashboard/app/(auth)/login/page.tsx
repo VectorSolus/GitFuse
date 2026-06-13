@@ -4,7 +4,12 @@ import dynamic from "next/dynamic";
 import { signIn } from "next-auth/react";
 import { ArrowRight, Mail, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ComponentType, FormEvent } from "react";
+import type {
+  ClipboardEvent,
+  ComponentType,
+  FormEvent,
+  KeyboardEvent,
+} from "react";
 
 const SoftAurora = dynamic(() => import("@/components/effects/SoftAurora"), {
   ssr: false,
@@ -21,6 +26,7 @@ export default function LoginPage() {
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState("");
   const emailInputRef = useRef<HTMLInputElement | null>(null);
+  const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -35,6 +41,11 @@ export default function LoginPage() {
     setEmail(decodedEmail);
     setStep("password");
   }, []);
+
+  useEffect(() => {
+    if (step !== "otp") return;
+    otpInputRefs.current[0]?.focus();
+  }, [step]);
 
   const maskedEmail = useMemo(() => {
     const [name, domain] = email.split("@");
@@ -83,8 +94,21 @@ export default function LoginPage() {
 
       setPending(true);
       setEmail(trimmedEmail);
+      setFeedback("");
 
       try {
+        const signInResponse = await signIn("credentials", {
+          email: trimmedEmail,
+          password,
+          callbackUrl: "/dashboard",
+          redirect: false,
+        });
+
+        if (signInResponse?.ok) {
+          window.location.href = signInResponse.url ?? "/dashboard";
+          return;
+        }
+
         const response = await fetch("/api/auth/otp/request", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -96,6 +120,15 @@ export default function LoginPage() {
         });
 
         if (!response.ok) throw new Error("Could not send verification code.");
+        const result = (await response.json()) as {
+          next?: "otp_required" | "password_signin_available";
+        };
+
+        if (result.next === "password_signin_available") {
+          setFeedback("Invalid email or password.");
+          return;
+        }
+
         setOtpDigits(Array<string>(6).fill(""));
         setStep("otp");
       } catch (error) {
@@ -108,11 +141,69 @@ export default function LoginPage() {
 
   function handleOtpChange(index: number, value: string) {
     const digit = value.replace(/\D/g, "").slice(-1);
+    if (!digit) return;
+
     setOtpDigits((current) => {
       const next = [...current];
       next[index] = digit;
       return next;
     });
+
+    if (index < otpDigits.length - 1) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  }
+
+  function handleOtpKeyDown(
+    index: number,
+    event: KeyboardEvent<HTMLInputElement>,
+  ) {
+    if (event.key === "Backspace") {
+      event.preventDefault();
+
+      setOtpDigits((current) => {
+        const next = [...current];
+
+        if (next[index]) {
+          next[index] = "";
+          return next;
+        }
+
+        if (index > 0) {
+          next[index - 1] = "";
+        }
+
+        return next;
+      });
+
+      if (!otpDigits[index] && index > 0) {
+        otpInputRefs.current[index - 1]?.focus();
+      }
+      return;
+    }
+
+    if (event.key.length === 1 && !/^\d$/.test(event.key)) {
+      event.preventDefault();
+    }
+  }
+
+  function handleOtpPaste(event: ClipboardEvent<HTMLInputElement>) {
+    event.preventDefault();
+    const digits = event.clipboardData
+      .getData("text")
+      .replace(/\D/g, "")
+      .slice(0, 6);
+
+    if (!digits) return;
+
+    const next = Array<string>(6).fill("");
+    digits.split("").forEach((digit, index) => {
+      next[index] = digit;
+    });
+    setOtpDigits(next);
+
+    const focusIndex = Math.min(digits.length, 5);
+    otpInputRefs.current[focusIndex]?.focus();
   }
 
   async function handleOtpVerify() {
@@ -123,7 +214,8 @@ export default function LoginPage() {
 
     const response = await signIn("credentials", {
       email,
-      otp,
+      password,
+      otpCode: otp,
       callbackUrl: "/dashboard",
       redirect: false,
     });
@@ -207,10 +299,16 @@ export default function LoginPage() {
               {Array.from({ length: 6 }).map((_, index) => (
                 <input
                   key={index}
+                  ref={(element) => {
+                    otpInputRefs.current[index] = element;
+                  }}
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   maxLength={1}
                   value={otpDigits[index]}
                   onChange={(event) => handleOtpChange(index, event.target.value)}
+                  onKeyDown={(event) => handleOtpKeyDown(index, event)}
+                  onPaste={handleOtpPaste}
                   aria-label={`OTP digit ${index + 1}`}
                 />
               ))}
@@ -222,7 +320,7 @@ export default function LoginPage() {
               type="button"
               className="gf-login-primary-wide"
               onClick={handleOtpVerify}
-              disabled={pending}
+              disabled={pending || otpDigits.join("").length !== 6}
             >
               Verify and continue
             </button>

@@ -1,9 +1,8 @@
-import { createHash, randomInt } from "node:crypto";
+import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 
 import { getSql } from "./db";
-import { sendLoginOtp } from "./resend";
 
-export type OtpPurpose = "add_email" | "sign_in_email";
+export type OtpPurpose = "add_email" | "delete_account" | "sign_in_email";
 
 type OtpResult =
   | { ok: true }
@@ -36,6 +35,15 @@ export async function createOtp(userId: string | null, email: string, purpose: O
   const sql = getSql();
 
   await sql`
+    update email_verification_otps
+    set used_at = now()
+    where email = ${normalizedEmail}
+      and purpose = ${purpose}
+      and used_at is null
+      and (${userId}::uuid is null or user_id = ${userId})
+  `;
+
+  await sql`
     insert into email_verification_otps (user_id, email, otp_code, purpose, expires_at)
     values (${userId}, ${normalizedEmail}, ${hashOtp(normalizedEmail, code)}, ${purpose}, ${expiresAt})
   `;
@@ -44,14 +52,43 @@ export async function createOtp(userId: string | null, email: string, purpose: O
 }
 
 export async function sendOtpEmail(email: string, code: string, purpose: OtpPurpose): Promise<void> {
-  await sendLoginOtp({
-    email: normalizeEmail(email),
-    code,
-    subject:
-      purpose === "add_email"
-        ? `Your GitFuse verification code: ${code}`
-        : `Your GitFuse verification code: ${code}`
+  const { sendTransactionalEmail } = await import("./email");
+  const purposeCopy =
+    purpose === "delete_account"
+      ? "confirm deleting your GitFuse account"
+      : purpose === "add_email"
+        ? "verify this email for your GitFuse account"
+        : "finish signing in to GitFuse";
+
+  await sendTransactionalEmail({
+    to: normalizeEmail(email),
+    subject: `Your GitFuse verification code: ${code}`,
+    text: [
+      "GitFuse verification code",
+      "",
+      code,
+      "",
+      `Use this code to ${purposeCopy}.`,
+      "This code expires in 10 minutes.",
+      "If you did not request this, ignore this email.",
+    ].join("\n"),
+    html: `
+      <h1>GitFuse verification code</h1>
+      <p>Use this one-time code to ${purposeCopy}.</p>
+      <p style="font-family:monospace;font-size:32px;font-weight:700;letter-spacing:8px">${code}</p>
+      <p>This code expires in 10 minutes. If you did not request it, ignore this email.</p>
+    `,
   });
+}
+
+function hashesMatch(expected: string, actual: string) {
+  const expectedBuffer = Buffer.from(expected, "hex");
+  const actualBuffer = Buffer.from(actual, "hex");
+
+  return (
+    expectedBuffer.length === actualBuffer.length &&
+    timingSafeEqual(expectedBuffer, actualBuffer)
+  );
 }
 
 export async function verifyOtp(
@@ -77,15 +114,19 @@ export async function verifyOtp(
     limit 1
   `;
 
-  if (!otp || otp.otp_code !== hashOtp(normalizedEmail, normalizedCode)) return false;
+  if (!otp || !hashesMatch(otp.otp_code, hashOtp(normalizedEmail, normalizedCode))) {
+    return false;
+  }
 
-  await sql`
+  const updated = await sql<{ id: string }[]>`
     update email_verification_otps
     set used_at = now()
     where id = ${otp.id}
+      and used_at is null
+    returning id
   `;
 
-  return true;
+  return updated.length === 1;
 }
 
 export async function createOtpChallenge(email: string) {

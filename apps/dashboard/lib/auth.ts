@@ -3,8 +3,17 @@ import Credentials from "next-auth/providers/credentials";
 import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
 
-import { upsertDashboardAccount } from "./account";
+import {
+  findDashboardAccountByEmail,
+  setDashboardAccountPassword,
+  upsertDashboardAccount,
+} from "./account";
 import { normalizeEmail, verifyOtpChallenge } from "./otp";
+import {
+  hashPassword,
+  isValidPassword,
+  verifyPassword,
+} from "./password";
 
 const githubClientId = process.env.GITHUB_CLIENT_ID?.trim();
 const githubClientSecret = process.env.GITHUB_CLIENT_SECRET?.trim();
@@ -42,11 +51,32 @@ const providers = [
     name: "Email OTP",
     credentials: {
       email: { label: "Email", type: "email" },
+      password: { label: "Password", type: "password" },
       otp: { label: "OTP", type: "text" },
+      otpCode: { label: "OTP code", type: "text" },
     },
     async authorize(credentials) {
       const email = normalizeEmail(String(credentials?.email ?? ""));
-      const otp = String(credentials?.otp ?? "");
+      const password = String(credentials?.password ?? "");
+      const otp = String(credentials?.otpCode ?? credentials?.otp ?? "");
+      const existingUser = await findDashboardAccountByEmail(email);
+
+      if (password && !otp) {
+        if (
+          !existingUser?.password_hash ||
+          !(await verifyPassword(password, existingUser.password_hash))
+        ) {
+          return null;
+        }
+
+        return {
+          id: existingUser.id,
+          name: existingUser.github_username,
+          email: existingUser.email,
+        };
+      }
+
+      if (!otp) return null;
 
       const verification = await verifyOtpChallenge(email, otp);
 
@@ -54,10 +84,30 @@ const providers = [
         return null;
       }
 
+      if (existingUser) {
+        if (!existingUser.password_hash && isValidPassword(password)) {
+          const user = await setDashboardAccountPassword(
+            existingUser.id,
+            await hashPassword(password),
+          );
+
+          if (!user) return null;
+        }
+
+        return {
+          id: existingUser.id,
+          name: existingUser.github_username,
+          email: existingUser.email,
+        };
+      }
+
+      if (!isValidPassword(password)) return null;
+
       const { user } = await upsertDashboardAccount({
         providerAccountId: `email:${email}`,
         username: email.split("@")[0],
         email,
+        passwordHash: await hashPassword(password),
       });
 
       return {

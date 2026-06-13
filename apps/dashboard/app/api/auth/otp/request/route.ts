@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { findDashboardAccountByEmail } from "../../../../../lib/account";
 import { createOtp, isValidEmail, normalizeEmail, sendOtpEmail } from "../../../../../lib/otp";
 
 export const runtime = "nodejs";
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
 
   const email = normalizeEmail(String(body?.email ?? ""));
   const password = String(body?.password ?? "");
-  const purpose = body?.purpose === "add_email" ? "add_email" : "sign_in_email";
+  const purpose = "sign_in_email";
 
   if (!isValidEmail(email)) {
     return NextResponse.json({ error: "INVALID_EMAIL" }, { status: 400 });
@@ -23,10 +24,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "PASSWORD_TOO_SHORT" }, { status: 400 });
   }
 
-  const code = await createOtp(null, email, purpose);
-  await sendOtpEmail(email, code, purpose);
+  try {
+    const user = await findDashboardAccountByEmail(email);
+
+    if (user?.password_hash) {
+      return NextResponse.json({
+        ok: true,
+        next: "password_signin_available",
+      });
+    }
+
+    const code = await createOtp(user?.id ?? null, email, purpose);
+    await sendOtpEmail(email, code, purpose);
+  } catch (error) {
+    console.error("[otp-request]", error);
+    return NextResponse.json(
+      { error: "EMAIL_DELIVERY_FAILED" },
+      { status: 502 },
+    );
+  }
 
   return NextResponse.json({
+    ok: true,
+    next: "otp_required",
     sent: true,
     expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
   });
