@@ -1,6 +1,7 @@
 "use server";
 
 import { auth } from "@/lib/auth";
+import { findDashboardAccountForSession } from "@/lib/account";
 import { getSql } from "@/lib/db";
 import {
   createOtp,
@@ -28,22 +29,19 @@ type CurrentUser = {
 
 async function getCurrentUser(): Promise<CurrentUser | null> {
   const session = await auth().catch(() => null);
-  const sessionEmail = session?.user?.email?.trim() || null;
-  const sessionName = session?.user?.name?.trim() || null;
+  if (!session?.user || session.invalid) return null;
 
-  if (!sessionEmail && !sessionName) return null;
+  const user = await findDashboardAccountForSession({
+    id: session.user.id,
+    email: session.user.email,
+  });
 
-  const sql = getSql();
-  const [user] = await sql<CurrentUser[]>`
-    select id, email
-    from users
-    where (${sessionEmail}::text is not null and email = ${sessionEmail})
-       or (${sessionName}::text is not null and github_username = ${sessionName})
-    order by updated_at desc
-    limit 1
-  `;
-
-  return user ?? null;
+  return user
+    ? {
+        id: user.id,
+        email: user.email,
+      }
+    : null;
 }
 
 export async function requestEmailOtp(email: string): Promise<ActionResult> {
@@ -183,23 +181,39 @@ export async function deleteCurrentAccountAction(input: {
 
     const sql = getSql();
     await sql.begin(async (transaction) => {
+      const [lockedUser] = await transaction<{
+        id: string;
+        email: string;
+      }[]>`
+        select id, email
+        from users
+        where id = ${user.id}
+        for update
+      `;
+
+      if (!lockedUser) {
+        throw new Error("Authenticated user no longer exists.");
+      }
+
+      const normalizedEmail = normalizeEmail(lockedUser.email);
+
       await transaction`
         update bundles
         set parent_bundle_id = null
         where repository_id in (
-          select id from repositories where user_id = ${user.id}
+          select id from repositories where user_id = ${lockedUser.id}
         )
       `;
 
       await transaction`
         delete from email_verification_otps
-        where email = ${user.email}
-           or user_id = ${user.id}
+        where email = ${normalizedEmail}
+           or user_id = ${lockedUser.id}
       `;
 
       await transaction`
         delete from users
-        where id = ${user.id}
+        where id = ${lockedUser.id}
       `;
     });
 

@@ -5,8 +5,12 @@ import Google from "next-auth/providers/google";
 
 import {
   findDashboardAccountByEmail,
+  findDashboardAccountById,
+  findDashboardAccountByProviderIdentity,
   setDashboardAccountPassword,
   upsertDashboardAccount,
+  type AuthProvider,
+  type DashboardAccount,
 } from "./account";
 import { normalizeEmail, verifyOtpChallenge } from "./otp";
 import {
@@ -28,6 +32,22 @@ if (!authSecret) {
   throw new Error("AUTH_SECRET or NEXTAUTH_SECRET is required");
 }
 
+function authUser(user: DashboardAccount) {
+  return {
+    id: user.id,
+    name: user.github_username,
+    email: user.email,
+  };
+}
+
+function profileValue(
+  profile: Record<string, unknown>,
+  key: string,
+) {
+  const value = profile[key];
+  return value === null || value === undefined ? "" : String(value);
+}
+
 const providers = [
   ...(githubClientId && githubClientSecret
     ? [
@@ -43,6 +63,13 @@ const providers = [
         Google({
           clientId: googleClientId,
           clientSecret: googleClientSecret,
+          authorization: {
+            params: {
+              prompt: "consent select_account",
+              access_type: "offline",
+              response_type: "code",
+            },
+          },
         }),
       ]
     : []),
@@ -59,6 +86,7 @@ const providers = [
       const email = normalizeEmail(String(credentials?.email ?? ""));
       const password = String(credentials?.password ?? "");
       const otp = String(credentials?.otpCode ?? credentials?.otp ?? "");
+
       const existingUser = await findDashboardAccountByEmail(email);
 
       if (password && !otp) {
@@ -69,11 +97,7 @@ const providers = [
           return null;
         }
 
-        return {
-          id: existingUser.id,
-          name: existingUser.github_username,
-          email: existingUser.email,
-        };
+        return authUser(existingUser);
       }
 
       if (!otp) return null;
@@ -94,27 +118,20 @@ const providers = [
           if (!user) return null;
         }
 
-        return {
-          id: existingUser.id,
-          name: existingUser.github_username,
-          email: existingUser.email,
-        };
+        return authUser(existingUser);
       }
 
       if (!isValidPassword(password)) return null;
 
       const { user } = await upsertDashboardAccount({
-        providerAccountId: `email:${email}`,
+        provider: "email",
+        providerAccountId: email,
         username: email.split("@")[0],
         email,
         passwordHash: await hashPassword(password),
       });
 
-      return {
-        id: user.id,
-        name: user.github_username,
-        email: user.email,
-      };
+      return authUser(user);
     },
   }),
 ];
@@ -128,83 +145,104 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
   pages: {
     signIn: "/login",
+    error: "/login",
   },
 
   callbacks: {
     async signIn({ account, profile, user }) {
       if (account?.provider === "credentials") {
-        return Boolean(user?.email);
+        return Boolean(
+          user?.id &&
+          user.email &&
+          (await findDashboardAccountById(user.id)),
+        );
       }
 
-      if (!account?.provider || !profile) {
+      if (
+        (account?.provider !== "google" &&
+          account?.provider !== "github") ||
+        !profile
+      ) {
         return false;
       }
 
+      const provider = account.provider as AuthProvider;
       const profileRecord = profile as Record<string, unknown>;
+      const providerAccountId =
+        account.providerAccountId ||
+        (provider === "google"
+          ? profileValue(profileRecord, "sub")
+          : profileValue(profileRecord, "id"));
 
-      if (account.provider === "google") {
-        const googleId = String(profileRecord.sub ?? "");
-        const email = String(profileRecord.email ?? "");
-        const username = String(
-          profileRecord.name ?? email.split("@")[0] ?? "",
-        );
+      const username =
+        provider === "google"
+          ? profileValue(profileRecord, "name")
+          : profileValue(profileRecord, "login") ||
+            profileValue(profileRecord, "name");
 
-        if (!googleId || !email) {
-          return false;
-        }
+      const profileEmail =
+        user.email ?? profileValue(profileRecord, "email");
+      const email =
+        normalizeEmail(profileEmail) ||
+        (provider === "github" && providerAccountId
+          ? `${username || providerAccountId}@users.noreply.github.com`
+          : "");
 
-        await upsertDashboardAccount({
-          providerAccountId: `google:${googleId}`,
-          username,
-          email,
-        });
-
-        return true;
+      if (!providerAccountId || !email || !username) {
+        return false;
       }
 
-      if (account.provider === "github") {
-        const githubId = String(profileRecord.id ?? "");
-        const githubUsername = String(
-          profileRecord.login ?? profileRecord.name ?? "",
-        );
-
-        const email = String(
-          profileRecord.email ??
-            `${githubUsername || githubId}@users.noreply.github.com`,
-        );
-
-        if (!githubId || !githubUsername) {
-          return false;
-        }
-
-        await upsertDashboardAccount({
-          providerAccountId: `github:${githubId}`,
-          githubId: `github:${githubId}`,
-          githubUsername,
-          username: githubUsername,
-          email,
-        });
-
-        return true;
-      }
-
-      return false;
+      await upsertDashboardAccount({
+        provider,
+        providerAccountId,
+        username,
+        email,
+      });
+      return true;
     },
 
-    async jwt({ token, user }) {
-      if (user) {
-        token.name = user.name;
-        token.email = user.email;
+    async jwt({ token, user, account }) {
+      let databaseUser: DashboardAccount | null = null;
+
+      if (
+        account?.provider === "google" ||
+        account?.provider === "github"
+      ) {
+        databaseUser = await findDashboardAccountByProviderIdentity(
+          account.provider,
+          account.providerAccountId,
+        );
+
+        if (!databaseUser && user.email) {
+          databaseUser = await findDashboardAccountByEmail(user.email);
+        }
+      } else if (user?.id) {
+        databaseUser = await findDashboardAccountById(user.id);
+      } else if (token.sub) {
+        databaseUser = await findDashboardAccountById(token.sub);
       }
+
+      if (!databaseUser) {
+        token.invalid = true;
+        return token;
+      }
+
+      token.sub = databaseUser.id;
+      token.name = databaseUser.github_username;
+      token.email = databaseUser.email;
+      delete token.invalid;
 
       return token;
     },
 
     async session({ session, token }) {
       if (session.user) {
+        session.user.id = token.sub ?? "";
         session.user.name = token.name ?? session.user.name;
         session.user.email = token.email ?? session.user.email;
       }
+
+      session.invalid = Boolean(token.invalid);
 
       return session;
     },
