@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
 import { ArrowRight, Mail, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -80,12 +80,30 @@ export default function LoginPage() {
   }, [email]);
 
   async function openOAuth(provider: OAuthProvider) {
-    const response = await signIn(provider, {
-      callbackUrl: "/dashboard",
-      redirect: false,
-    });
+    setFeedback("");
 
-    window.open(response?.url ?? `/api/auth/signin/${provider}`, "_blank", "noopener,noreferrer");
+    try {
+      await signOut({ redirect: false });
+
+      const authorizationParams =
+        provider === "github"
+          ? { prompt: "select_account" }
+          : {
+              prompt: "consent select_account",
+              access_type: "offline",
+              response_type: "code",
+            };
+
+      await signIn(
+        provider,
+        {
+          redirectTo: "/dashboard",
+        },
+        authorizationParams,
+      );
+    } catch {
+      setFeedback("Could not start sign-in. Please try again.");
+    }
   }
 
   function handlePreferredSignIn() {

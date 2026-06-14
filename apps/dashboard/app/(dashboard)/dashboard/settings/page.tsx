@@ -824,7 +824,8 @@ function DeleteAccountModal({
       return;
     }
 
-    await signOut({ callbackUrl: result.redirectTo ?? "/" });
+    await signOut({ redirect: false });
+    window.location.assign(result.redirectTo ?? "/");
   }
 
   return (

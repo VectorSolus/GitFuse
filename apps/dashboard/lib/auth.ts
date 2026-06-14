@@ -54,6 +54,11 @@ const providers = [
         GitHub({
           clientId: githubClientId,
           clientSecret: githubClientSecret,
+          authorization: {
+            params: {
+              prompt: "select_account",
+            },
+          },
         }),
       ]
     : []),
@@ -224,6 +229,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       if (!databaseUser) {
         token.invalid = true;
+        token.error = "stale_session";
         return token;
       }
 
@@ -231,6 +237,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       token.name = databaseUser.github_username;
       token.email = databaseUser.email;
       delete token.invalid;
+      delete token.error;
 
       return token;
     },
@@ -243,6 +250,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       session.invalid = Boolean(token.invalid);
+      session.error =
+        token.error === "stale_session" ? "stale_session" : undefined;
 
       return session;
     },
