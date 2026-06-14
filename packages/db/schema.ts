@@ -23,6 +23,7 @@ export const users = pgTable(
     githubId: text("github_id").notNull(),
     githubUsername: text("github_username").notNull(),
     email: text("email").notNull(),
+    passwordHash: text("password_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
