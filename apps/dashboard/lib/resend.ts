@@ -1,9 +1,10 @@
 import { getSql } from "./db";
 
-type EmailInput = {
+export type EmailInput = {
   to: string;
   subject: string;
   html: string;
+  text?: string;
   emailLog?: string | null;
 };
 
@@ -26,7 +27,7 @@ function daysUntil(value: string) {
   return Math.max(0, Math.ceil((new Date(value).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
 }
 
-async function sendEmail(input: EmailInput) {
+export async function sendEmail(input: EmailInput) {
   if (process.env.NODE_ENV !== "production" && input.emailLog) {
     const { appendFile } = await import("node:fs/promises");
     await appendFile(input.emailLog, `to=${input.to} subject=${input.subject}\n`);
@@ -46,7 +47,8 @@ async function sendEmail(input: EmailInput) {
       from: fromAddress(),
       to: input.to,
       subject: input.subject,
-      html: input.html
+      html: input.html,
+      text: input.text
     }),
     cache: "no-store"
   });
