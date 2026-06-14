@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { ArrowRight, Mail, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -17,29 +18,49 @@ const SoftAurora = dynamic(() => import("@/components/effects/SoftAurora"), {
 
 type LoginStep = "email" | "password" | "otp";
 type OAuthProvider = "google" | "github";
+type AccountStatus = {
+  exists: boolean;
+  hasPassword: boolean;
+};
 
 export default function LoginPage() {
+  const router = useRouter();
   const [step, setStep] = useState<LoginStep>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otpDigits, setOtpDigits] = useState(Array<string>(6).fill(""));
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(
+    null,
+  );
   const emailInputRef = useRef<HTMLInputElement | null>(null);
   const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const emailFromHome = params.get("email");
+    const authError = params.get("error");
 
-    if (!emailFromHome) return;
+    if (authError) {
+      setFeedback("Your previous session expired. Please sign in again.");
+    }
 
-    const decodedEmail = emailFromHome.trim();
+    if (emailFromHome) {
+      const decodedEmail = emailFromHome.trim();
 
-    if (!decodedEmail) return;
-
-    setEmail(decodedEmail);
-    setStep("password");
+      if (decodedEmail) {
+        setEmail(decodedEmail);
+        void loadAccountStatus(decodedEmail)
+          .then((status) => {
+            setAccountStatus(status);
+            setStep("password");
+          })
+          .catch(() => {
+            setFeedback("Could not check this account. Please try again.");
+          });
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -68,11 +89,38 @@ export default function LoginPage() {
   }
 
   function handlePreferredSignIn() {
+    setAccountStatus(null);
+    setFeedback("");
     setStep("email");
 
     window.setTimeout(() => {
       emailInputRef.current?.focus();
     }, 0);
+  }
+
+  async function loadAccountStatus(emailAddress: string) {
+    const response = await fetch("/api/auth/account-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: emailAddress }),
+    });
+    const result = (await response.json()) as {
+      error?: string;
+      message?: string;
+      exists?: boolean;
+      hasPassword?: boolean;
+    };
+
+    if (!response.ok) {
+      throw new Error(
+        result.message ?? "Could not check this account. Please try again.",
+      );
+    }
+
+    return {
+      exists: Boolean(result.exists),
+      hasPassword: Boolean(result.hasPassword),
+    };
   }
 
   async function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
@@ -84,8 +132,22 @@ export default function LoginPage() {
     if (!trimmedEmail) return;
 
     if (step === "email") {
-      setEmail(trimmedEmail);
-      setStep("password");
+      setPending(true);
+
+      try {
+        const status = await loadAccountStatus(trimmedEmail);
+        setEmail(trimmedEmail);
+        setAccountStatus(status);
+        setStep("password");
+      } catch (error) {
+        setFeedback(
+          error instanceof Error
+            ? error.message
+            : "Could not check this account. Please try again.",
+        );
+      } finally {
+        setPending(false);
+      }
       return;
     }
 
@@ -97,15 +159,29 @@ export default function LoginPage() {
       setFeedback("");
 
       try {
-        const signInResponse = await signIn("credentials", {
-          email: trimmedEmail,
-          password,
-          callbackUrl: "/dashboard",
-          redirect: false,
-        });
+        const currentStatus =
+          accountStatus ?? (await loadAccountStatus(trimmedEmail));
+        setAccountStatus(currentStatus);
 
-        if (signInResponse?.ok) {
-          window.location.href = signInResponse.url ?? "/dashboard";
+        if (currentStatus.hasPassword) {
+          const signInResponse = await signIn("credentials", {
+            email: trimmedEmail,
+            password,
+            redirectTo: "/dashboard",
+            redirect: false,
+          });
+
+          if (
+            signInResponse &&
+            !signInResponse.error &&
+            signInResponse.url
+          ) {
+            router.push("/dashboard");
+            router.refresh();
+            return;
+          }
+
+          setFeedback("Invalid email or password.");
           return;
         }
 
@@ -119,12 +195,20 @@ export default function LoginPage() {
           }),
         });
 
-        if (!response.ok) throw new Error("Could not send verification code.");
         const result = (await response.json()) as {
+          error?: string;
+          message?: string;
           next?: "otp_required" | "password_signin_available";
         };
 
+        if (!response.ok) {
+          throw new Error(
+            result.message ?? "Could not send verification code.",
+          );
+        }
+
         if (result.next === "password_signin_available") {
+          setAccountStatus({ exists: true, hasPassword: true });
           setFeedback("Invalid email or password.");
           return;
         }
@@ -219,14 +303,15 @@ export default function LoginPage() {
       email,
       password,
       otpCode: otp,
-      callbackUrl: "/dashboard",
+      redirectTo: "/dashboard",
       redirect: false,
     });
 
     setPending(false);
 
-    if (response?.ok && response.url) {
-      window.location.href = response.url;
+    if (response && !response.error && response.url) {
+      router.push("/dashboard");
+      router.refresh();
       return;
     }
 
@@ -413,6 +498,7 @@ export default function LoginPage() {
                     type="submit"
                     className="gf-arrow-button"
                     aria-label="Continue with email"
+                    disabled={pending}
                   >
                     <ArrowRight size={20} />
                   </button>
@@ -421,7 +507,11 @@ export default function LoginPage() {
 
               {step === "password" ? (
                 <div className="gf-password-step">
-                  <label htmlFor="password">Create new password</label>
+                  <label htmlFor="password">
+                    {accountStatus?.hasPassword
+                      ? "Enter password"
+                      : "Create new password"}
+                  </label>
 
                   <div className="gf-password-row">
                     <input
@@ -430,7 +520,11 @@ export default function LoginPage() {
                       placeholder="Minimum 8 characters"
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
-                      autoComplete="new-password"
+                      autoComplete={
+                        accountStatus?.hasPassword
+                          ? "current-password"
+                          : "new-password"
+                      }
                       minLength={8}
                       required
                     />
@@ -438,7 +532,11 @@ export default function LoginPage() {
                     <button
                       type="submit"
                       className="gf-arrow-button"
-                      aria-label="Continue to OTP verification"
+                      aria-label={
+                        accountStatus?.hasPassword
+                          ? "Sign in with password"
+                          : "Continue to OTP verification"
+                      }
                       disabled={pending}
                     >
                       <ArrowRight size={20} />
@@ -446,14 +544,20 @@ export default function LoginPage() {
                   </div>
 
                   <p>
-                    You can still edit the email above. Use at least 8
-                    characters. The next screen will verify your email with an
-                    OTP.
+                    {accountStatus?.hasPassword
+                      ? "Enter the password for this GitFuse account to continue to your dashboard."
+                      : "You can still edit the email above. Use at least 8 characters. The next screen will verify your email with an OTP."}
                   </p>
-                  {feedback ? <p>{feedback}</p> : null}
+                  {feedback ? (
+                    <p className="gf-auth-error-text">{feedback}</p>
+                  ) : null}
                 </div>
               ) : null}
             </form>
+
+            {step === "email" && feedback ? (
+              <p className="gf-auth-error-text">{feedback}</p>
+            ) : null}
 
             <div className="gf-login-divider">
               <span />
