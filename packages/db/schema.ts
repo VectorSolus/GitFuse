@@ -1,6 +1,7 @@
 import {
   type AnyPgColumn,
   bigint,
+  boolean,
   foreignKey,
   index,
   integer,
@@ -57,13 +58,24 @@ export const plans = pgTable(
     tier: planTier("tier").notNull().default("free"),
     stripeCustomerId: text("stripe_customer_id"),
     stripeSubId: text("stripe_sub_id"),
+    paymentProvider: text("payment_provider"),
+    razorpayCustomerId: text("razorpay_customer_id"),
+    razorpaySubscriptionId: text("razorpay_subscription_id"),
+    razorpayPlanId: text("razorpay_plan_id"),
+    requestedTier: planTier("requested_tier").notNull().default("free"),
+    subscriptionStatus: text("subscription_status"),
     teamSeatCount: integer("team_seat_count").notNull().default(1),
+    currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
     currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
   (table) => ({
-    userIdUnique: unique("plans_user_id_unique").on(table.userId)
+    userIdUnique: unique("plans_user_id_unique").on(table.userId),
+    razorpaySubscriptionIdUnique: unique("plans_razorpay_subscription_id_unique").on(
+      table.razorpaySubscriptionId
+    )
   })
 );
 
