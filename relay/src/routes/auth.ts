@@ -17,7 +17,10 @@ authRoutes.post("/approve", async (c) => {
   const body = await c.req.json<Partial<ApproveAuthRequest>>().catch(() => null);
   if (!body?.code || !body.githubUsername) return badRequest(c, "code and githubUsername are required.");
 
-  const limit = await checkDeviceLimitForApproval(body.githubUsername);
+  const limit = await checkDeviceLimitForApproval(
+    body.githubUsername,
+    body.email
+  );
   if (!limit.ok) return overLimit(c, limit.limit, limit.current, limit.max);
 
   const approved = await approveAuthSession(body.code, body.githubUsername, body.email);

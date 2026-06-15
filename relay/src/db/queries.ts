@@ -7,7 +7,13 @@ import type {
   SyncEvent,
   SyncEventType
 } from "@gitfuse/types/workspace";
-import { TIER_LIMITS, type LimitName, type PlanTier, type UsageSummary } from "@gitfuse/types/billing";
+import { PLAN_LIMITS, type LimitName, type PlanTier, type UsageSummary } from "@gitfuse/types/billing";
+import {
+  ensureRelayDatabaseUser,
+  findRelayDatabaseUserById,
+  findRelayDatabaseUserByIdentity,
+  relayDatabaseConfigured
+} from "./postgres";
 
 export type AuthenticatedDevice = {
   tokenHash: string;
@@ -49,8 +55,9 @@ function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-function tierForUser(userId: string) {
-  return users.get(userId)?.tier ?? "free";
+async function tierForUser(userId: string) {
+  const databaseUser = await findRelayDatabaseUserById(userId);
+  return databaseUser?.tier ?? users.get(userId)?.tier ?? "free";
 }
 
 function numericLimit(value: number | "unlimited") {
@@ -71,23 +78,34 @@ function userStorageBytes(userId: string) {
 export type LimitCheck = { ok: true } | { ok: false; limit: LimitName; current: number; max: number };
 
 export async function checkRepoLimit(userId: string): Promise<LimitCheck> {
-  const max = numericLimit(TIER_LIMITS[tierForUser(userId)].repos);
+  const max = numericLimit(PLAN_LIMITS[await tierForUser(userId)].repos);
   const current = [...repositories.values()].filter((repo) => repo.userId === userId).length;
   if (max !== null && current >= max) return { ok: false, limit: "repos", current: current + 1, max };
   return { ok: true };
 }
 
-export async function checkDeviceLimitForApproval(githubUsername: string): Promise<LimitCheck> {
-  const user = [...users.values()].find((record) => record.githubUsername === githubUsername);
+export async function checkDeviceLimitForApproval(
+  githubUsername: string,
+  email?: string | null
+): Promise<LimitCheck> {
+  const databaseUser = await findRelayDatabaseUserByIdentity(
+    githubUsername,
+    email
+  );
+  const user =
+    databaseUser ??
+    [...users.values()].find(
+      (record) => record.githubUsername === githubUsername
+    );
   if (!user) return { ok: true };
-  const max = numericLimit(TIER_LIMITS[user.tier].devices);
+  const max = numericLimit(PLAN_LIMITS[user.tier].devices);
   const current = [...devices.values()].filter((device) => device.userId === user.id && device.revokedAt === null).length;
   if (max !== null && current >= max) return { ok: false, limit: "devices", current: current + 1, max };
   return { ok: true };
 }
 
 export async function checkBundleUploadLimits(userId: string, sizeBytes: number): Promise<LimitCheck> {
-  const limits = TIER_LIMITS[tierForUser(userId)];
+  const limits = PLAN_LIMITS[await tierForUser(userId)];
   if (sizeBytes > limits.bundleSizeBytes) {
     return { ok: false, limit: "bundle_size", current: sizeBytes, max: limits.bundleSizeBytes };
   }
@@ -110,6 +128,12 @@ export async function authenticateToken(token: string): Promise<AuthenticatedDev
     if (device.tokenHash === tokenHash && device.revokedAt === null) {
       device.lastActiveAt = nowIso();
       const user = users.get(device.userId);
+      if (
+        relayDatabaseConfigured() &&
+        !(await findRelayDatabaseUserById(device.userId))
+      ) {
+        return null;
+      }
       return user
         ? { tokenHash, userId: device.userId, deviceId: device.id, username: user.githubUsername }
         : null;
@@ -137,11 +161,24 @@ export async function approveAuthSession(code: string, githubUsername: string, e
   const session = authSessions.get(code);
   if (!session || new Date(session.expiresAt).getTime() < Date.now()) return null;
 
-  let user = [...users.values()].find((record) => record.githubUsername === githubUsername);
+  const databaseUser = await ensureRelayDatabaseUser(
+    githubUsername,
+    email
+  );
+  let user = databaseUser
+    ? {
+        id: databaseUser.id,
+        githubUsername: databaseUser.githubUsername,
+        email: databaseUser.email,
+        tier: databaseUser.tier
+      }
+    : [...users.values()].find(
+        (record) => record.githubUsername === githubUsername
+      );
   if (!user) {
     user = { id: randomUUID(), githubUsername, email, tier: "free" };
-    users.set(user.id, user);
   }
+  users.set(user.id, user);
 
   const token = `gf_${randomBytes(32).toString("base64url")}`;
   const device: Device & { tokenHash: string; token: string } = {
@@ -297,8 +334,8 @@ export async function getUsage(userId: string): Promise<UsageSummary> {
   const userRepos = await listRepos(userId);
   const userDevices = await listDevices(userId);
   const storageBytes = userStorageBytes(userId);
-  const tier = tierForUser(userId);
-  const limits = TIER_LIMITS[tier];
+  const tier = await tierForUser(userId);
+  const limits = PLAN_LIMITS[tier];
   return {
     tier,
     repos: { current: userRepos.length, max: limits.repos },

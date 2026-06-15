@@ -6,6 +6,7 @@ import {
   createBundle,
   findBundle,
   findRepoByRelayEntry,
+  getUsage,
   listBundles,
   recordSyncEvent,
   updateBundleStatus
@@ -58,7 +59,10 @@ bundleRoutes.post("/upload", async (c) => {
     const r2Key = `${auth.userId}/${relayEntryId}/${randomUUID()}.bundle.enc`;
     await putBundleObject(r2Key, await file.arrayBuffer());
 
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const usage = await getUsage(auth.userId);
+    const expiresAt = new Date(
+      Date.now() + usage.historyDays * 24 * 60 * 60 * 1000
+    ).toISOString();
     const bundle = await createBundle({
       repositoryId: repository.id,
       deviceId: auth.deviceId,
