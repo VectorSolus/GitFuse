@@ -1,4 +1,9 @@
-import { TIER_LIMITS, type PlanTier, type UsageSummary } from "@gitfuse/types/billing";
+import {
+  PLAN_LIMITS,
+  effectivePlanTier,
+  type PlanTier,
+  type UsageSummary,
+} from "@gitfuse/types/billing";
 
 import { getSql } from "./db";
 
@@ -14,6 +19,9 @@ type AccountLookup = {
 
 type UsageRow = {
   tier: PlanTier | null;
+  requested_tier: PlanTier | null;
+  payment_provider: string | null;
+  subscription_status: string | null;
   repo_count: number | string | null;
   active_device_count: number | string | null;
   storage_bytes: number | string | null;
@@ -27,8 +35,13 @@ function toIso(value: Date | string | null) {
 }
 
 function buildUsage(row: UsageRow): DashboardUsage {
-  const tier = row.tier ?? "free";
-  const limits = TIER_LIMITS[tier];
+  const tier = effectivePlanTier({
+    tier: row.tier,
+    requestedTier: row.requested_tier,
+    paymentProvider: row.payment_provider,
+    subscriptionStatus: row.subscription_status,
+  });
+  const limits = PLAN_LIMITS[tier];
   return {
     tier,
     repos: {
@@ -66,6 +79,9 @@ export async function getDashboardUsage(account: AccountLookup, options: { fixtu
   if (!account.email && !account.username) {
     return buildUsage({
       tier: "free",
+      requested_tier: "free",
+      payment_provider: null,
+      subscription_status: null,
       repo_count: 0,
       active_device_count: 0,
       storage_bytes: 0,
@@ -91,6 +107,9 @@ export async function getDashboardUsage(account: AccountLookup, options: { fixtu
     )
     select
       plans.tier,
+      plans.requested_tier,
+      plans.payment_provider,
+      plans.subscription_status,
       (select count(*) from owned_repos)::int as repo_count,
       (
         select count(*) from devices
@@ -123,6 +142,9 @@ export async function getDashboardUsage(account: AccountLookup, options: { fixtu
   return buildUsage(
     row ?? {
       tier: "free",
+      requested_tier: "free",
+      payment_provider: null,
+      subscription_status: null,
       repo_count: 0,
       active_device_count: 0,
       storage_bytes: 0,

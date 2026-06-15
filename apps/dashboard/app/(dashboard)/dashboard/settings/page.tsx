@@ -127,6 +127,7 @@ export default function SettingsPage() {
           <BillingSection
             billingLimits={billingLimits}
             tier={data?.billing.tier ?? "free"}
+            subscriptionStatus={data?.billing.subscriptionStatus ?? null}
             onOpenBilling={() => setBillingOpen(true)}
           />
         ) : null}
@@ -146,6 +147,7 @@ export default function SettingsPage() {
         <BillingModal
           billingLimits={billingLimits}
           tier={data?.billing.tier ?? "free"}
+          subscriptionStatus={data?.billing.subscriptionStatus ?? null}
           onClose={() => setBillingOpen(false)}
         />
       ) : null}
@@ -345,10 +347,12 @@ function SecuritySection() {
 function BillingSection({
   billingLimits,
   tier,
+  subscriptionStatus,
   onOpenBilling,
 }: {
   billingLimits: BillingLimit[];
   tier: string;
+  subscriptionStatus: string | null;
   onOpenBilling: () => void;
 }) {
   return (
@@ -357,8 +361,8 @@ function BillingSection({
         <p className="gf-dash-eyebrow">Billing</p>
         <h2>Manage plan limits without clutter.</h2>
         <span>
-          Your current workspace is on the {tier} tier. Stripe checkout and
-          invoices can be connected from the upgrade flow when configured.
+          Your current workspace is on the {tier} tier. Razorpay subscription
+          changes are available from the upgrade flow.
         </span>
       </section>
 
@@ -377,10 +381,14 @@ function BillingSection({
         <div className="gf-settings-billing-summary">
           <div>
             <strong>{titleCase(tier)} plan</strong>
-            <span>Active workspace plan</span>
+            <span>
+              {subscriptionStatus
+                ? `Razorpay subscription ${subscriptionStatus}`
+                : "Workspace plan without an active subscription"}
+            </span>
           </div>
 
-          <em>Active</em>
+          <em>{subscriptionStatus ? titleCase(subscriptionStatus) : "Free"}</em>
         </div>
 
         <div className="gf-settings-billing-tiles">
@@ -925,10 +933,12 @@ function DeleteAccountModal({
 function BillingModal({
   billingLimits,
   tier,
+  subscriptionStatus,
   onClose,
 }: {
   billingLimits: BillingLimit[];
   tier: string;
+  subscriptionStatus: string | null;
   onClose: () => void;
 }) {
   return (
@@ -948,8 +958,9 @@ function BillingModal({
         <p className="gf-dash-eyebrow">Billing</p>
         <h2>{titleCase(tier)} workspace</h2>
         <span>
-          Billing is ready as a frontend view. Stripe checkout, invoices, and
-          live plan changes can be connected later.
+          Razorpay Checkout handles subscription authorization, while signed
+          webhooks control live plan changes. Current subscription status:{" "}
+          {subscriptionStatus ?? "not subscribed"}.
         </span>
 
         <div className="gf-settings-billing-mini-grid">

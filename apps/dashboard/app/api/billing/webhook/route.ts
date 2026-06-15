@@ -1,72 +1,33 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
-import { applyStripeSubscription } from "../../../../lib/billing";
-import { sendBillingReceipt } from "../../../../lib/resend";
+import {
+  syncRazorpaySubscriptionEvent,
+  verifyRazorpayWebhookSignature,
+  type RazorpayWebhookEvent,
+} from "../../../../lib/billing";
 
-type StripeSubscriptionPayload = {
-  type?: string;
-  data?: {
-    object?: {
-      id?: string;
-      customer?: string;
-      customer_email?: string;
-      number?: string;
-      amount_paid?: number;
-      currency?: string;
-      hosted_invoice_url?: string | null;
-      current_period_end?: number;
-      items?: { data?: Array<{ price?: { id?: string } }> };
-    };
-  };
-};
-
-function verifyStripeSignature(payload: string, signatureHeader: string | null) {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) return true;
-  if (!signatureHeader) return false;
-
-  const timestamp = signatureHeader.split(",").find((part) => part.startsWith("t="))?.slice(2);
-  const signature = signatureHeader.split(",").find((part) => part.startsWith("v1="))?.slice(3);
-  if (!timestamp || !signature) return false;
-
-  const expected = createHmac("sha256", secret).update(`${timestamp}.${payload}`).digest("hex");
-  const actualBuffer = Buffer.from(signature, "hex");
-  const expectedBuffer = Buffer.from(expected, "hex");
-  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
-}
+export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const payload = await request.text();
-  if (!verifyStripeSignature(payload, request.headers.get("stripe-signature"))) {
-    return NextResponse.json({ error: "invalid_signature" }, { status: 400 });
+  const rawBody = await request.text();
+  const signature = request.headers.get("x-razorpay-signature");
+
+  if (!verifyRazorpayWebhookSignature(rawBody, signature)) {
+    return NextResponse.json(
+      { error: "invalid_signature" },
+      { status: 400 },
+    );
   }
 
-  const event = JSON.parse(payload) as StripeSubscriptionPayload;
-  if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated") {
-    const subscription = event.data?.object;
-    if (subscription?.customer && subscription.id) {
-      await applyStripeSubscription({
-        stripeCustomerId: subscription.customer,
-        stripeSubId: subscription.id,
-        priceId: subscription.items?.data?.[0]?.price?.id,
-        currentPeriodEnd: subscription.current_period_end
-      });
-    }
+  try {
+    const event = JSON.parse(rawBody) as RazorpayWebhookEvent;
+    await syncRazorpaySubscriptionEvent(event);
+    return NextResponse.json({ received: true });
+  } catch (error) {
+    console.error("[billing:webhook]", error);
+    return NextResponse.json(
+      { error: "webhook_processing_failed" },
+      { status: 500 },
+    );
   }
-
-  if (event.type === "invoice.payment_succeeded") {
-    const invoice = event.data?.object;
-    if (invoice?.customer_email) {
-      await sendBillingReceipt({
-        email: invoice.customer_email,
-        invoiceNumber: invoice.number ?? invoice.id ?? "invoice",
-        amountPaid: invoice.amount_paid ?? 0,
-        currency: (invoice.currency ?? "usd").toUpperCase(),
-        hostedInvoiceUrl: invoice.hosted_invoice_url
-      });
-    }
-  }
-
-  return NextResponse.json({ received: true });
 }

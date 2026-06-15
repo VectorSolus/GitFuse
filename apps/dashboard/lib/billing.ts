@@ -1,4 +1,12 @@
-import { TIER_LIMITS, type PlanTier } from "@gitfuse/types/billing";
+import {
+  PLAN_LIMITS,
+  effectivePlanTier,
+  type PaidPlanTier,
+  type PlanTier,
+  type RazorpaySubscriptionStatus,
+} from "@gitfuse/types/billing";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import Razorpay from "razorpay";
 
 import { getSql } from "./db";
 
@@ -13,67 +21,188 @@ export type DashboardInvoice = {
 
 export type DashboardBilling = {
   tier: PlanTier;
-  stripeCustomerId: string | null;
-  stripeSubId: string | null;
+  requestedTier: PlanTier;
+  paymentProvider: "razorpay" | null;
+  subscriptionStatus: RazorpaySubscriptionStatus | null;
+  razorpayCustomerId: string | null;
+  razorpaySubscriptionId: string | null;
+  razorpayPlanId: string | null;
+  currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
   invoices: DashboardInvoice[];
 };
 
 type AccountLookup = {
+  id?: string | null;
   email?: string | null;
   username?: string | null;
 };
 
 type BillingRow = {
+  user_id: string;
+  user_name: string;
+  user_email: string;
   tier: PlanTier | null;
-  stripe_customer_id: string | null;
-  stripe_sub_id: string | null;
+  requested_tier: PlanTier | null;
+  payment_provider: string | null;
+  subscription_status: string | null;
+  razorpay_customer_id: string | null;
+  razorpay_subscription_id: string | null;
+  razorpay_plan_id: string | null;
+  current_period_start: Date | string | null;
   current_period_end: Date | string | null;
+  cancel_at_period_end: boolean | null;
 };
 
-type CheckoutInput = AccountLookup & {
-  tier: Extract<PlanTier, "pro" | "team">;
-  successUrl: string;
-  cancelUrl: string;
-  checkoutLog?: string | null;
-};
-
-export type CheckoutResult =
-  | { url: string }
-  | { error: "stripe_not_configured"; message: "Stripe not configured for local development." };
-
-type StripeInvoice = {
+type RazorpaySubscriptionEntity = {
   id: string;
-  number?: string | null;
-  amount_paid?: number | null;
-  currency?: string | null;
-  hosted_invoice_url?: string | null;
-  created?: number | null;
+  plan_id?: string | null;
+  customer_id?: string | null;
+  status?: string | null;
+  current_start?: number | null;
+  current_end?: number | null;
+  ended_at?: number | null;
+  notes?: Record<string, string | number> | null;
 };
 
-const stripePriceEnv: Record<Extract<PlanTier, "pro" | "team">, string> = {
-  pro: "STRIPE_PRO_PRICE_ID",
-  team: "STRIPE_TEAM_PRICE_ID"
+type RazorpayPaymentEntity = {
+  id?: string | null;
+  subscription_id?: string | null;
+  status?: string | null;
 };
+
+export type RazorpayWebhookEvent = {
+  event?: string;
+  payload?: {
+    subscription?: { entity?: RazorpaySubscriptionEntity };
+    payment?: { entity?: RazorpayPaymentEntity };
+  };
+};
+
+export type RazorpayCheckoutResult =
+  | {
+      ok: true;
+      provider: "razorpay";
+      keyId: string;
+      subscriptionId: string;
+      name: string;
+      email: string;
+      plan: PaidPlanTier;
+    }
+  | {
+      ok: false;
+      error:
+        | "Razorpay is not configured yet."
+        | "subscription_change_pending"
+        | "active_subscription_exists";
+      message: string;
+    };
+
+const razorpayPlanEnv: Record<PaidPlanTier, string> = {
+  pro: "RAZORPAY_PRO_PLAN_ID",
+  team: "RAZORPAY_TEAM_PLAN_ID",
+};
+
+const paidStatuses = new Set(["active", "authenticated"]);
+const terminalStatuses = new Set([
+  "cancelled",
+  "completed",
+  "expired",
+  "failed",
+  "halted",
+  "paused",
+]);
+
+let cachedRazorpay: Razorpay | null = null;
 
 function toIso(value: Date | string | null) {
   if (!value) return null;
   return value instanceof Date ? value.toISOString() : value;
 }
 
-function stripeKey() {
-  return process.env.STRIPE_SECRET_KEY;
+function timestampToIso(value?: number | null) {
+  return value ? new Date(value * 1000).toISOString() : null;
 }
 
-function isLocalPlaceholderPrice(priceId?: string | null) {
-  return !priceId || priceId === "price_local_placeholder";
+function normalizeSubscriptionStatus(
+  value: string | null | undefined,
+): RazorpaySubscriptionStatus | null {
+  const allowed = new Set<RazorpaySubscriptionStatus>([
+    "created",
+    "authenticated",
+    "active",
+    "pending",
+    "halted",
+    "cancelled",
+    "completed",
+    "expired",
+    "paused",
+    "failed",
+  ]);
+  return value && allowed.has(value as RazorpaySubscriptionStatus)
+    ? (value as RazorpaySubscriptionStatus)
+    : null;
 }
 
-function planFromPrice(priceId?: string | null): PlanTier | null {
-  if (!priceId) return null;
-  if (priceId === process.env.STRIPE_PRO_PRICE_ID) return "pro";
-  if (priceId === process.env.STRIPE_TEAM_PRICE_ID) return "team";
+function planFromRazorpayPlanId(planId: string | null | undefined) {
+  if (!planId) return null;
+  if (planId === process.env.RAZORPAY_PRO_PLAN_ID) return "pro" as const;
+  if (planId === process.env.RAZORPAY_TEAM_PLAN_ID) return "team" as const;
   return null;
+}
+
+function emptyBilling(): DashboardBilling {
+  return {
+    tier: "free",
+    requestedTier: "free",
+    paymentProvider: null,
+    subscriptionStatus: null,
+    razorpayCustomerId: null,
+    razorpaySubscriptionId: null,
+    razorpayPlanId: null,
+    currentPeriodStart: null,
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+    invoices: [],
+  };
+}
+
+async function findBillingRow(account: AccountLookup) {
+  if (!account.id && !account.email && !account.username) return null;
+
+  const sql = getSql();
+  const [row] = await sql<BillingRow[]>`
+    with dashboard_user as (
+      select id, github_username, email
+      from users
+      where (${account.id ?? null}::uuid is not null and id = ${account.id ?? null})
+         or (${account.email ?? null}::text is not null and lower(email) = lower(${account.email ?? null}))
+         or (${account.username ?? null}::text is not null and github_username = ${account.username ?? null})
+      order by case when id = ${account.id ?? null}::uuid then 0 else 1 end,
+               updated_at desc
+      limit 1
+    )
+    select
+      dashboard_user.id as user_id,
+      dashboard_user.github_username as user_name,
+      dashboard_user.email as user_email,
+      plans.tier,
+      plans.requested_tier,
+      plans.payment_provider,
+      plans.subscription_status,
+      plans.razorpay_customer_id,
+      plans.razorpay_subscription_id,
+      plans.razorpay_plan_id,
+      plans.current_period_start,
+      plans.current_period_end,
+      plans.cancel_at_period_end
+    from dashboard_user
+    left join plans on plans.user_id = dashboard_user.id
+    limit 1
+  `;
+
+  return row ?? null;
 }
 
 async function loadFixtureBilling(fixturePath: string) {
@@ -81,140 +210,347 @@ async function loadFixtureBilling(fixturePath: string) {
   return JSON.parse(await readFile(fixturePath, "utf8")) as DashboardBilling;
 }
 
-async function loadStripeInvoices(stripeCustomerId: string | null): Promise<DashboardInvoice[]> {
-  const key = stripeKey();
-  if (!key || !stripeCustomerId) return [];
+export function getRazorpayClient() {
+  if (cachedRazorpay) return cachedRazorpay;
 
-  const params = new URLSearchParams({ customer: stripeCustomerId, limit: "5" });
-  const response = await fetch(`https://api.stripe.com/v1/invoices?${params.toString()}`, {
-    headers: { authorization: `Bearer ${key}` },
-    cache: "no-store"
+  const keyId = process.env.RAZORPAY_KEY_ID?.trim();
+  const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
+  if (!keyId || !keySecret) {
+    throw new Error("RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required");
+  }
+
+  cachedRazorpay = new Razorpay({
+    key_id: keyId,
+    key_secret: keySecret,
   });
-  if (!response.ok) return [];
-
-  const payload = (await response.json()) as { data?: StripeInvoice[] };
-  return (payload.data ?? []).map((invoice) => ({
-    id: invoice.id,
-    number: invoice.number ?? invoice.id,
-    amountPaid: invoice.amount_paid ?? 0,
-    currency: (invoice.currency ?? "usd").toUpperCase(),
-    hostedInvoiceUrl: invoice.hosted_invoice_url ?? null,
-    createdAt: new Date((invoice.created ?? 0) * 1000).toISOString()
-  }));
+  return cachedRazorpay;
 }
 
-export async function getDashboardBilling(account: AccountLookup, options: { fixturePath?: string | null } = {}) {
+export async function getDashboardBilling(
+  account: AccountLookup,
+  options: { fixturePath?: string | null } = {},
+) {
   if (process.env.NODE_ENV !== "production" && options.fixturePath) {
     return loadFixtureBilling(options.fixturePath);
   }
 
-  if (!account.email && !account.username) {
+  const row = await findBillingRow(account);
+  if (!row) return emptyBilling();
+
+  const requestedTier = row.requested_tier ?? row.tier ?? "free";
+  const paymentProvider =
+    row.payment_provider === "razorpay" ? "razorpay" : null;
+  const subscriptionStatus = normalizeSubscriptionStatus(
+    row.subscription_status,
+  );
+
+  return {
+    tier: effectivePlanTier({
+      tier: row.tier,
+      requestedTier,
+      paymentProvider,
+      subscriptionStatus,
+    }),
+    requestedTier,
+    paymentProvider,
+    subscriptionStatus,
+    razorpayCustomerId: row.razorpay_customer_id,
+    razorpaySubscriptionId: row.razorpay_subscription_id,
+    razorpayPlanId: row.razorpay_plan_id,
+    currentPeriodStart: toIso(row.current_period_start),
+    currentPeriodEnd: toIso(row.current_period_end),
+    cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
+    invoices: [],
+  } satisfies DashboardBilling;
+}
+
+export async function getEffectiveTier(userId: string) {
+  return (await getDashboardBilling({ id: userId })).tier;
+}
+
+export function getPlanLimits(tier: PlanTier) {
+  return PLAN_LIMITS[tier];
+}
+
+export async function createRazorpaySubscription(
+  userId: string,
+  tier: PaidPlanTier,
+): Promise<RazorpayCheckoutResult> {
+  const keyId =
+    process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID?.trim() ||
+    process.env.RAZORPAY_KEY_ID?.trim();
+  const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
+  const planId = process.env[razorpayPlanEnv[tier]]?.trim();
+
+  if (
+    process.env.PAYMENT_PROVIDER !== "razorpay" ||
+    !keyId ||
+    !keySecret ||
+    !planId
+  ) {
     return {
-      tier: "free" as PlanTier,
-      stripeCustomerId: null,
-      stripeSubId: null,
-      currentPeriodEnd: null,
-      invoices: []
+      ok: false,
+      error: "Razorpay is not configured yet.",
+      message: "Razorpay is not configured yet.",
     };
   }
 
+  const row = await findBillingRow({ id: userId });
+  if (!row) {
+    throw new Error("Authenticated GitFuse account was not found.");
+  }
+
+  const existingStatus = normalizeSubscriptionStatus(row.subscription_status);
+  const existingRequestedTier = row.requested_tier ?? row.tier ?? "free";
+  if (
+    row.payment_provider === "razorpay" &&
+    row.razorpay_subscription_id &&
+    (existingStatus === "created" || existingStatus === "pending")
+  ) {
+    if (existingRequestedTier !== tier) {
+      return {
+        ok: false,
+        error: "subscription_change_pending",
+        message:
+          "Another Razorpay subscription change is already pending. Complete or cancel it before selecting a different plan.",
+      };
+    }
+
+    return {
+      ok: true,
+      provider: "razorpay",
+      keyId,
+      subscriptionId: row.razorpay_subscription_id,
+      name: row.user_name,
+      email: row.user_email,
+      plan: tier,
+    };
+  }
+
+  if (
+    row.payment_provider === "razorpay" &&
+    existingStatus &&
+    paidStatuses.has(existingStatus)
+  ) {
+    return {
+      ok: false,
+      error: "active_subscription_exists",
+      message:
+        "An active Razorpay subscription already controls this workspace. Manage that subscription before changing plans.",
+    };
+  }
+
+  const subscription = (await getRazorpayClient().subscriptions.create({
+    plan_id: planId,
+    total_count: 120,
+    quantity: 1,
+    customer_notify: true,
+    notes: {
+      gitfuse_user_id: row.user_id,
+      gitfuse_tier: tier,
+    },
+  })) as RazorpaySubscriptionEntity;
+
   const sql = getSql();
-  const [row] = await sql<BillingRow[]>`
-    with dashboard_user as (
-      select id
-      from users
-      where (${account.email ?? null}::text is not null and email = ${account.email ?? null})
-         or (${account.username ?? null}::text is not null and github_username = ${account.username ?? null})
-      order by updated_at desc
-      limit 1
+  await sql`
+    insert into plans (
+      user_id,
+      tier,
+      requested_tier,
+      payment_provider,
+      razorpay_customer_id,
+      razorpay_subscription_id,
+      razorpay_plan_id,
+      subscription_status,
+      current_period_start,
+      current_period_end,
+      cancel_at_period_end
     )
-    select plans.tier, plans.stripe_customer_id, plans.stripe_sub_id, plans.current_period_end
-    from dashboard_user
-    left join plans on plans.user_id = dashboard_user.id
+    values (
+      ${row.user_id},
+      'free',
+      ${tier},
+      'razorpay',
+      ${subscription.customer_id ?? null},
+      ${subscription.id},
+      ${planId},
+      ${subscription.status ?? "created"},
+      ${timestampToIso(subscription.current_start)},
+      ${timestampToIso(subscription.current_end)},
+      false
+    )
+    on conflict (user_id)
+    do update set
+      tier = case
+        when plans.payment_provider = 'razorpay'
+         and plans.subscription_status in ('active', 'authenticated')
+        then plans.tier
+        else 'free'
+      end,
+      requested_tier = excluded.requested_tier,
+      payment_provider = excluded.payment_provider,
+      razorpay_customer_id = coalesce(
+        excluded.razorpay_customer_id,
+        plans.razorpay_customer_id
+      ),
+      razorpay_subscription_id = excluded.razorpay_subscription_id,
+      razorpay_plan_id = excluded.razorpay_plan_id,
+      subscription_status = excluded.subscription_status,
+      current_period_start = excluded.current_period_start,
+      current_period_end = excluded.current_period_end,
+      cancel_at_period_end = false,
+      updated_at = now()
+  `;
+
+  return {
+    ok: true,
+    provider: "razorpay",
+    keyId,
+    subscriptionId: subscription.id,
+    name: row.user_name,
+    email: row.user_email,
+    plan: tier,
+  };
+}
+
+export function verifyRazorpayCheckoutSignature(input: {
+  paymentId: string;
+  subscriptionId: string;
+  signature: string;
+}) {
+  const secret = process.env.RAZORPAY_KEY_SECRET?.trim();
+  if (!secret) return false;
+
+  const expected = createHmac("sha256", secret)
+    .update(`${input.paymentId}|${input.subscriptionId}`)
+    .digest("hex");
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  const receivedBuffer = Buffer.from(input.signature, "utf8");
+
+  return (
+    expectedBuffer.length === receivedBuffer.length &&
+    timingSafeEqual(expectedBuffer, receivedBuffer)
+  );
+}
+
+export function verifyRazorpayWebhookSignature(
+  body: string,
+  signature: string | null,
+) {
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
+  if (!secret || !signature) return false;
+  return Razorpay.validateWebhookSignature(body, signature, secret);
+}
+
+export async function verifyRazorpaySubscriptionOwnership(
+  userId: string,
+  subscriptionId: string,
+) {
+  const sql = getSql();
+  const [row] = await sql<{ exists: boolean }[]>`
+    select exists (
+      select 1
+      from plans
+      where user_id = ${userId}
+        and razorpay_subscription_id = ${subscriptionId}
+    ) as exists
+  `;
+  return Boolean(row?.exists);
+}
+
+function eventStatus(event: RazorpayWebhookEvent) {
+  const suppliedStatus =
+    event.payload?.subscription?.entity?.status?.toLowerCase();
+  if (suppliedStatus) return suppliedStatus;
+
+  switch (event.event) {
+    case "subscription.authenticated":
+      return "authenticated";
+    case "subscription.activated":
+    case "subscription.charged":
+    case "subscription.resumed":
+    case "payment.captured":
+      return "active";
+    case "subscription.completed":
+      return "completed";
+    case "subscription.cancelled":
+      return "cancelled";
+    case "subscription.expired":
+      return "expired";
+    case "subscription.halted":
+      return "halted";
+    case "subscription.paused":
+      return "paused";
+    case "payment.failed":
+      return "failed";
+    default:
+      return null;
+  }
+}
+
+export async function syncRazorpaySubscriptionEvent(
+  event: RazorpayWebhookEvent,
+) {
+  const subscription = event.payload?.subscription?.entity;
+  const payment = event.payload?.payment?.entity;
+  const subscriptionId = subscription?.id ?? payment?.subscription_id;
+  if (!subscriptionId) return null;
+
+  const sql = getSql();
+  const [existing] = await sql<{
+    id: string;
+    requested_tier: PlanTier;
+    razorpay_plan_id: string | null;
+  }[]>`
+    select id, requested_tier, razorpay_plan_id
+    from plans
+    where razorpay_subscription_id = ${subscriptionId}
     limit 1
   `;
+  if (!existing) return null;
 
-  const billing: DashboardBilling = {
-    tier: row?.tier ?? ("free" as PlanTier),
-    stripeCustomerId: row?.stripe_customer_id ?? null,
-    stripeSubId: row?.stripe_sub_id ?? null,
-    currentPeriodEnd: toIso(row?.current_period_end ?? null),
-    invoices: []
-  };
-  billing.invoices = await loadStripeInvoices(billing.stripeCustomerId);
-  return billing;
-}
+  const status = normalizeSubscriptionStatus(eventStatus(event));
+  const planId = subscription?.plan_id ?? existing.razorpay_plan_id;
+  const requestedTier =
+    planFromRazorpayPlanId(planId) ?? existing.requested_tier;
+  const effectiveTier =
+    status && paidStatuses.has(status) ? requestedTier : "free";
+  const shouldCancel =
+    Boolean(status && terminalStatuses.has(status)) ||
+    event.event === "subscription.cancelled";
 
-export async function createBillingCheckoutSession(input: CheckoutInput): Promise<CheckoutResult> {
-  const priceId = process.env[stripePriceEnv[input.tier]];
-  if (process.env.NODE_ENV !== "production" && isLocalPlaceholderPrice(priceId)) {
-    return {
-      error: "stripe_not_configured",
-      message: "Stripe not configured for local development."
-    };
-  }
-  if (!priceId) throw new Error(`${stripePriceEnv[input.tier]} is required`);
-
-  if (process.env.NODE_ENV !== "production" && input.checkoutLog) {
-    const { appendFile } = await import("node:fs/promises");
-    await appendFile(input.checkoutLog, `tier=${input.tier} email=${input.email ?? ""} price=${priceId}\n`);
-    return { url: input.successUrl };
-  }
-
-  const key = stripeKey();
-  if (!key) throw new Error("STRIPE_SECRET_KEY is required");
-
-  const params = new URLSearchParams({
-    mode: "subscription",
-    success_url: input.successUrl,
-    cancel_url: input.cancelUrl,
-    "line_items[0][price]": priceId,
-    "line_items[0][quantity]": "1",
-    "metadata[tier]": input.tier
-  });
-  if (input.email) params.set("customer_email", input.email);
-
-  const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${key}`,
-      "content-type": "application/x-www-form-urlencoded"
-    },
-    body: params,
-    cache: "no-store"
-  });
-  if (!response.ok) throw new Error(`Stripe checkout failed with status ${response.status}`);
-
-  const session = (await response.json()) as { url?: string | null };
-  if (!session.url) throw new Error("Stripe checkout session did not include a url");
-  return { url: session.url };
-}
-
-export async function applyStripeSubscription(input: {
-  stripeCustomerId: string;
-  stripeSubId: string;
-  priceId?: string | null;
-  currentPeriodEnd?: number | null;
-}) {
-  const tier = planFromPrice(input.priceId) ?? "pro";
-  const currentPeriodEnd = input.currentPeriodEnd
-    ? new Date(input.currentPeriodEnd * 1000).toISOString()
-    : null;
-
-  const sql = getSql();
-  const [plan] = await sql<{ id: string; tier: PlanTier }[]>`
+  const [updated] = await sql<{
+    id: string;
+    tier: PlanTier;
+    subscription_status: string | null;
+  }[]>`
     update plans
-    set
-      tier = ${tier},
-      stripe_customer_id = ${input.stripeCustomerId},
-      stripe_sub_id = ${input.stripeSubId},
-      current_period_end = ${currentPeriodEnd},
-      updated_at = now()
-    where stripe_customer_id = ${input.stripeCustomerId}
-       or stripe_sub_id = ${input.stripeSubId}
-    returning id, tier
+    set tier = ${effectiveTier},
+        requested_tier = ${requestedTier},
+        payment_provider = 'razorpay',
+        razorpay_customer_id = coalesce(
+          ${subscription?.customer_id ?? null},
+          razorpay_customer_id
+        ),
+        razorpay_plan_id = coalesce(${planId ?? null}, razorpay_plan_id),
+        subscription_status = ${status},
+        current_period_start = coalesce(
+          ${timestampToIso(subscription?.current_start)},
+          current_period_start
+        ),
+        current_period_end = coalesce(
+          ${timestampToIso(
+            subscription?.current_end ?? subscription?.ended_at,
+          )},
+          current_period_end
+        ),
+        cancel_at_period_end = ${shouldCancel},
+        updated_at = now()
+    where id = ${existing.id}
+    returning id, tier, subscription_status
   `;
-  return plan ?? null;
+
+  return updated ?? null;
 }
 
 export function tierPriceLabel(tier: PlanTier) {
@@ -225,10 +561,16 @@ export function tierPriceLabel(tier: PlanTier) {
 }
 
 export function tierLimitSummary(tier: PlanTier) {
-  const limits = TIER_LIMITS[tier];
+  const limits = PLAN_LIMITS[tier];
   return {
-    repos: limits.repos === "unlimited" ? "Unlimited repos" : `${limits.repos} repos`,
-    devices: limits.devices === "unlimited" ? "Unlimited devices" : `${limits.devices} devices`,
-    history: `${limits.historyDays} days history`
+    repos:
+      limits.repos === "unlimited"
+        ? "Unlimited repos"
+        : `${limits.repos} repos`,
+    devices:
+      limits.devices === "unlimited"
+        ? "Unlimited devices"
+        : `${limits.devices} devices`,
+    history: `${limits.historyDays} days history`,
   };
 }

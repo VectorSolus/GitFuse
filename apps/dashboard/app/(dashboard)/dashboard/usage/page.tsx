@@ -1,5 +1,6 @@
 "use client";
 
+import { PLAN_LIMITS } from "@gitfuse/types/billing";
 import { useMemo, useState } from "react";
 
 import { useDashboardData, type DashboardData } from "@/hooks/use-dashboard-data";
@@ -27,11 +28,11 @@ type UsageMetric = {
 };
 
 const proFeatures = [
-  "Unlimited private repositories",
-  "Unlimited trusted devices",
-  "365 days sync history",
-  "500 MB bundle size",
-  "50 GB relay storage",
+  `${formatLimit(PLAN_LIMITS.pro.repos)} private repositories`,
+  `${formatLimit(PLAN_LIMITS.pro.devices)} trusted devices`,
+  `${PLAN_LIMITS.pro.historyDays} days sync history`,
+  `${formatBytes(PLAN_LIMITS.pro.bundleSizeBytes)} bundle size`,
+  `${formatBytes(PLAN_LIMITS.pro.storageTotalBytes)} relay storage`,
 ];
 
 export default function UsagePage() {
@@ -183,7 +184,7 @@ export default function UsagePage() {
         <article className="gf-usage-plan-panel">
           <div className="gf-usage-plan-panel-head">
             <p className="gf-dash-eyebrow">Included now</p>
-            <h3>Free workspace</h3>
+            <h3>{titleCase(data?.billing.tier ?? "free")} workspace</h3>
           </div>
 
           <ul>
@@ -195,7 +196,7 @@ export default function UsagePage() {
 
         <article className="gf-usage-plan-panel gf-usage-plan-panel-pro">
           <div className="gf-usage-plan-panel-head">
-            <p className="gf-dash-eyebrow">Available later</p>
+            <p className="gf-dash-eyebrow">Upgrade option</p>
             <h3>Pro workspace</h3>
           </div>
 
@@ -212,8 +213,7 @@ export default function UsagePage() {
             <p className="gf-dash-eyebrow">Billing</p>
           <strong>{titleCase(data?.billing.tier ?? "free")} tier active</strong>
           <span>
-            Plan changes are available from billing when the backend connection
-            is ready.
+            Plan benefits follow the subscription state confirmed by Razorpay.
           </span>
         </div>
 
@@ -255,9 +255,8 @@ function BillingModal({ onClose }: { onClose: () => void }) {
           <p className="gf-dash-eyebrow">Billing</p>
           <h2>Manage your GitFuse workspace plan.</h2>
           <span>
-            Billing is frontend-only for now. When Stripe is connected, this
-            screen can create checkout sessions, manage invoices, and update
-            account limits automatically.
+            Razorpay Checkout manages subscription authorization. Signed
+            webhooks update account limits automatically.
           </span>
 
           <div className="gf-billing-plan-compare">
@@ -265,21 +264,21 @@ function BillingModal({ onClose }: { onClose: () => void }) {
               <p>Free</p>
               <h3>$0</h3>
               <ul>
-                <li>5 repositories</li>
-                <li>3 devices</li>
-                <li>500 MB relay storage</li>
-                <li>30 days history</li>
+                <li>{formatLimit(PLAN_LIMITS.free.repos)} repositories</li>
+                <li>{formatLimit(PLAN_LIMITS.free.devices)} devices</li>
+                <li>{formatBytes(PLAN_LIMITS.free.storageTotalBytes)} relay storage</li>
+                <li>{PLAN_LIMITS.free.historyDays} days history</li>
               </ul>
             </article>
 
             <article className="is-featured">
               <p>Pro</p>
-              <h3>$12</h3>
+              <h3>$9</h3>
               <ul>
-                <li>Unlimited repositories</li>
-                <li>More trusted devices</li>
-                <li>365 days history</li>
-                <li>Larger encrypted bundles</li>
+                <li>{formatLimit(PLAN_LIMITS.pro.repos)} repositories</li>
+                <li>{formatLimit(PLAN_LIMITS.pro.devices)} trusted devices</li>
+                <li>{PLAN_LIMITS.pro.historyDays} days history</li>
+                <li>{formatBytes(PLAN_LIMITS.pro.bundleSizeBytes)} bundles</li>
               </ul>
 
               <button type="button">Continue later</button>

@@ -1,9 +1,42 @@
 "use client";
 
+import { PLAN_LIMITS, type PlanTier } from "@gitfuse/types/billing";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { useDashboardData } from "@/hooks/use-dashboard-data";
+
+type RazorpayCheckoutResponse = {
+  razorpay_payment_id: string;
+  razorpay_subscription_id: string;
+  razorpay_signature: string;
+};
+
+type RazorpayCheckoutOptions = {
+  key: string;
+  subscription_id: string;
+  name: string;
+  description: string;
+  prefill: {
+    name?: string;
+    email?: string;
+  };
+  theme: {
+    color: string;
+  };
+  handler: (response: RazorpayCheckoutResponse) => void | Promise<void>;
+  modal: {
+    ondismiss: () => void;
+  };
+};
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: RazorpayCheckoutOptions) => {
+      open: () => void;
+    };
+  }
+}
 
 type Plan = {
   name: string;
@@ -22,75 +55,49 @@ type Plan = {
 
 function buildPlans(currentTier: string): Plan[] {
   return [
-  {
-    name: "Free",
-    tier: "free",
-    price: "$0",
-    badge: currentTier === "free" ? "Current plan" : "Included",
-    current: currentTier === "free",
-    description:
-      "For personal testing, local development, and small private sync workflows.",
-    features: [
-      "5 tracked repositories",
-      "3 trusted devices",
-      "500 MB relay storage",
-      "30 days sync history",
-      "50 MB bundle size",
-    ],
-    limits: [
-      { label: "Repositories", value: "5" },
-      { label: "Devices", value: "3" },
-      { label: "Storage", value: "500 MB" },
-      { label: "History", value: "30 days" },
-    ],
-  },
-  {
-    name: "Pro",
-    tier: "pro",
-    price: "$9/mo",
-    badge: currentTier === "pro" ? "Current plan" : "Recommended",
-    current: currentTier === "pro",
-    highlighted: true,
-    description:
-      "For developers who move across machines and want larger private sync capacity.",
-    features: [
-      "Unlimited private repositories",
-      "Unlimited trusted devices",
-      "50 GB relay storage",
-      "365 days sync history",
-      "500 MB bundle size",
-      "Priority workspace limits",
-    ],
-    limits: [
-      { label: "Repositories", value: "Unlimited" },
-      { label: "Devices", value: "Unlimited" },
-      { label: "Storage", value: "50 GB" },
-      { label: "History", value: "365 days" },
-    ],
-  },
-  {
-    name: "Team",
-    tier: "team",
-    price: "$18/user/mo",
-    badge: currentTier === "team" ? "Current plan" : "Upcoming",
-    current: currentTier === "team",
-    description:
-      "For teams that need shared workspace controls, audit history, and managed access.",
-    features: [
-      "Team workspace access",
-      "Shared repository controls",
-      "Managed device access",
-      "Audit-friendly sync history",
-      "Repository-scoped API keys",
-      "Priority support",
-    ],
-    limits: [
-      { label: "Repositories", value: "Custom" },
-      { label: "Devices", value: "Custom" },
-      { label: "Storage", value: "Custom" },
-      { label: "History", value: "Custom" },
-    ],
-  },
+    {
+      name: "Free",
+      tier: "free",
+      price: "$0",
+      badge: currentTier === "free" ? "Current plan" : "Included",
+      current: currentTier === "free",
+      description:
+        "For personal testing, local development, and small private sync workflows.",
+      features: planCapacityFeatures("free"),
+      limits: planCapacityLimits("free"),
+    },
+    {
+      name: "Pro",
+      tier: "pro",
+      price: "$9/mo",
+      badge: currentTier === "pro" ? "Current plan" : "Recommended",
+      current: currentTier === "pro",
+      highlighted: true,
+      description:
+        "For developers who move across machines and want larger private sync capacity.",
+      features: [
+        ...planCapacityFeatures("pro"),
+        "Priority workspace limits",
+      ],
+      limits: planCapacityLimits("pro"),
+    },
+    {
+      name: "Team",
+      tier: "team",
+      price: "$18/user/mo",
+      badge: currentTier === "team" ? "Current plan" : "For teams",
+      current: currentTier === "team",
+      description:
+        "For teams that need shared workspace controls, audit history, and managed access.",
+      features: [
+        ...planCapacityFeatures("team"),
+        "Team workspace access",
+        "Shared repository controls",
+        "Managed device access",
+        "Repository-scoped API keys",
+      ],
+      limits: planCapacityLimits("team"),
+    },
   ];
 }
 
@@ -103,27 +110,27 @@ const comparisonRows = [
   },
   {
     feature: "Tracked repositories",
-    free: "5",
-    pro: "Unlimited",
-    team: "Custom",
+    free: formatLimit(PLAN_LIMITS.free.repos),
+    pro: formatLimit(PLAN_LIMITS.pro.repos),
+    team: formatLimit(PLAN_LIMITS.team.repos),
   },
   {
     feature: "Trusted devices",
-    free: "3",
-    pro: "Unlimited",
-    team: "Custom",
+    free: formatLimit(PLAN_LIMITS.free.devices),
+    pro: formatLimit(PLAN_LIMITS.pro.devices),
+    team: formatLimit(PLAN_LIMITS.team.devices),
   },
   {
     feature: "Relay storage",
-    free: "500 MB",
-    pro: "50 GB",
-    team: "Custom",
+    free: formatBytes(PLAN_LIMITS.free.storageTotalBytes),
+    pro: formatBytes(PLAN_LIMITS.pro.storageTotalBytes),
+    team: formatBytes(PLAN_LIMITS.team.storageTotalBytes),
   },
   {
     feature: "Sync history",
-    free: "30 days",
-    pro: "365 days",
-    team: "Custom",
+    free: `${PLAN_LIMITS.free.historyDays} days`,
+    pro: `${PLAN_LIMITS.pro.historyDays} days`,
+    team: `${PLAN_LIMITS.team.historyDays} days`,
   },
   {
     feature: "Repository-scoped API keys",
@@ -137,12 +144,16 @@ export default function UpgradePage() {
   const { data } = useDashboardData();
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutMessage, setCheckoutMessage] = useState("");
+  const [checkoutPendingTier, setCheckoutPendingTier] = useState<
+    "pro" | "team" | null
+  >(null);
   const currentTier = data?.billing.tier ?? "free";
   const plans = useMemo(() => buildPlans(currentTier), [currentTier]);
 
   async function handleUpgrade(plan: Plan) {
     if (plan.tier === "free") return;
     setCheckoutMessage("");
+    setCheckoutPendingTier(plan.tier);
 
     try {
       const response = await fetch("/api/billing/checkout", {
@@ -151,20 +162,74 @@ export default function UpgradePage() {
         body: JSON.stringify({ tier: plan.tier }),
       });
       const payload = (await response.json().catch(() => ({}))) as {
-        url?: string;
+        ok?: boolean;
+        keyId?: string;
+        subscriptionId?: string;
+        name?: string;
+        email?: string;
+        plan?: "pro" | "team";
         message?: string;
       };
 
-      if (payload.url) {
-        window.location.href = payload.url;
+      if (
+        !response.ok ||
+        !payload.ok ||
+        !payload.keyId ||
+        !payload.subscriptionId ||
+        !payload.plan
+      ) {
+        setCheckoutMessage(
+          payload.message ?? "Razorpay checkout is unavailable right now.",
+        );
+        setCheckoutOpen(true);
+        setCheckoutPendingTier(null);
         return;
       }
 
-      setCheckoutMessage(payload.message ?? "Stripe checkout will be wired after deployment.");
-      setCheckoutOpen(true);
+      await loadRazorpayCheckout();
+      if (!window.Razorpay) {
+        throw new Error("Razorpay Checkout did not load.");
+      }
+
+      const checkout = new window.Razorpay({
+        key: payload.keyId,
+        subscription_id: payload.subscriptionId,
+        name: "GitFuse",
+        description: `GitFuse ${titleCase(payload.plan)}`,
+        prefill: {
+          name: payload.name,
+          email: payload.email,
+        },
+        theme: {
+          color: "#0890f2",
+        },
+        handler: async (checkoutResponse) => {
+          const verification = await fetch("/api/billing/verify", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(checkoutResponse),
+          });
+
+          if (!verification.ok) {
+            setCheckoutMessage(
+              "Payment authorization could not be verified. Your plan was not changed.",
+            );
+            setCheckoutOpen(true);
+            setCheckoutPendingTier(null);
+            return;
+          }
+
+          window.location.assign("/dashboard/upgrade?checkout=success");
+        },
+        modal: {
+          ondismiss: () => setCheckoutPendingTier(null),
+        },
+      });
+      checkout.open();
     } catch {
-      setCheckoutMessage("Stripe checkout will be wired after deployment.");
+      setCheckoutMessage("Razorpay checkout is unavailable right now.");
       setCheckoutOpen(true);
+      setCheckoutPendingTier(null);
     }
   }
 
@@ -176,8 +241,8 @@ export default function UpgradePage() {
           <h2>Scale your private sync workspace when you need more room.</h2>
           <span>
             Compare workspace limits for repositories, devices, storage, and
-            sync history. Billing is frontend-ready and can be connected to
-            Stripe checkout later.
+            sync history. Upgrades are securely authorized through Razorpay
+            Checkout.
           </span>
         </div>
 
@@ -233,8 +298,12 @@ export default function UpgradePage() {
                 Current plan
               </button>
             ) : (
-              <button type="button" onClick={() => handleUpgrade(plan)}>
-                {plan.name === "Team" ? "Contact later" : "Upgrade"}
+              <button
+                type="button"
+                onClick={() => handleUpgrade(plan)}
+                disabled={checkoutPendingTier === plan.tier}
+              >
+                {checkoutPendingTier === plan.tier ? "Opening..." : "Upgrade"}
               </button>
             )}
           </article>
@@ -276,11 +345,10 @@ export default function UpgradePage() {
       <section className="gf-upgrade-note-card">
         <div>
           <p className="gf-dash-eyebrow">Billing status</p>
-          <strong>Checkout is not connected yet.</strong>
+          <strong>Razorpay subscription billing</strong>
           <span>
-            This page is a production-ready frontend shell. When the backend is
-            ready, the upgrade buttons can create a Stripe checkout session and
-            update the workspace plan automatically.
+            Razorpay activates plan benefits only after a signed webhook
+            confirms the subscription.
           </span>
         </div>
       </section>
@@ -317,10 +385,10 @@ function UpgradeModal({
         </button>
 
         <p className="gf-dash-eyebrow">Upgrade</p>
-        <h2>Checkout will be connected later.</h2>
+        <h2>Checkout is unavailable.</h2>
         <span>
           {message ||
-            "The frontend upgrade flow is ready. Once Stripe is wired, this button can create a checkout session and redirect the user securely."}
+            "Razorpay checkout could not be started. Check the billing configuration and try again."}
         </span>
 
         <div className="gf-upgrade-modal-actions">
@@ -335,6 +403,74 @@ function UpgradeModal({
       </section>
     </div>
   );
+}
+
+async function loadRazorpayCheckout() {
+  if (window.Razorpay) return;
+
+  const existingScript = document.querySelector<HTMLScriptElement>(
+    'script[src="https://checkout.razorpay.com/v1/checkout.js"]',
+  );
+  if (existingScript) {
+    if (window.Razorpay) return;
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(
+        () => reject(new Error("Razorpay Checkout timed out.")),
+        10_000,
+      );
+      existingScript.addEventListener("load", () => resolve(), {
+        once: true,
+      });
+      existingScript.addEventListener(
+        "error",
+        () => reject(new Error("Razorpay Checkout failed to load.")),
+        { once: true },
+      );
+      existingScript.addEventListener(
+        "load",
+        () => window.clearTimeout(timeout),
+        { once: true },
+      );
+      existingScript.addEventListener(
+        "error",
+        () => window.clearTimeout(timeout),
+        { once: true },
+      );
+    });
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () =>
+      reject(new Error("Razorpay Checkout failed to load."));
+    document.head.appendChild(script);
+  });
+}
+
+function planCapacityFeatures(tier: PlanTier) {
+  const limits = PLAN_LIMITS[tier];
+  return [
+    `${formatLimit(limits.repos)} private repositories`,
+    `${formatLimit(limits.devices)} trusted devices`,
+    `${formatBytes(limits.storageTotalBytes)} relay storage`,
+    `${limits.historyDays} days sync history`,
+    `${formatBytes(limits.bundleSizeBytes)} bundle size`,
+  ];
+}
+
+function planCapacityLimits(tier: PlanTier) {
+  const limits = PLAN_LIMITS[tier];
+  return [
+    { label: "Repositories", value: formatLimit(limits.repos) },
+    { label: "Devices", value: formatLimit(limits.devices) },
+    { label: "Storage", value: formatBytes(limits.storageTotalBytes) },
+    { label: "History", value: `${limits.historyDays} days` },
+  ];
 }
 
 function formatLimit(value: number | "unlimited") {
