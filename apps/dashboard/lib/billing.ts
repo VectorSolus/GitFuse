@@ -76,7 +76,18 @@ type RazorpayConfig = {
   keyId: string;
   keySecret: string;
   publicKeyId: string;
+  appUrl: string;
   planId: string;
+};
+
+type RazorpaySafeError = {
+  statusCode?: string | number;
+  error?: {
+    code?: string;
+    description?: string;
+    reason?: string;
+    field?: string;
+  };
 };
 
 export type RazorpayWebhookEvent = {
@@ -118,7 +129,13 @@ const terminalStatuses = new Set([
   "paused",
 ]);
 
-let cachedRazorpay: Razorpay | null = null;
+let cachedRazorpay:
+  | {
+      keyId: string;
+      keySecret: string;
+      client: Razorpay;
+    }
+  | null = null;
 
 function toIso(value: Date | string | null) {
   if (!value) return null;
@@ -156,22 +173,52 @@ function planFromRazorpayPlanId(planId: string | null | undefined) {
   return null;
 }
 
-function getEnvValue(name: string) {
-  return process.env[name]?.trim() ?? "";
+function readEnv(name: string) {
+  const value = process.env[name]?.trim();
+  return value && value.length > 0 ? value : null;
 }
 
-export function getRazorpayConfigForPlan(
+function maskIdentifier(value: string) {
+  if (value.length <= 8) return `${value.slice(0, 2)}...`;
+  return `${value.slice(0, 7)}...${value.slice(-4)}`;
+}
+
+function safeRazorpayError(error: unknown) {
+  const razorpayError = error as RazorpaySafeError;
+  return {
+    statusCode: razorpayError.statusCode,
+    code: razorpayError.error?.code,
+    description: razorpayError.error?.description,
+    reason: razorpayError.error?.reason,
+    field: razorpayError.error?.field,
+  };
+}
+
+export function getBillingConfigDiagnostics() {
+  return {
+    paymentProvider: process.env.PAYMENT_PROVIDER,
+    hasRazorpayKeyId: Boolean(readEnv("RAZORPAY_KEY_ID")),
+    hasRazorpayKeySecret: Boolean(readEnv("RAZORPAY_KEY_SECRET")),
+    hasPublicRazorpayKeyId: Boolean(readEnv("NEXT_PUBLIC_RAZORPAY_KEY_ID")),
+    hasAppUrl: Boolean(readEnv("NEXT_PUBLIC_APP_URL")),
+    hasProPlanId: Boolean(readEnv("RAZORPAY_PRO_PLAN_ID")),
+    hasTeamPlanId: Boolean(readEnv("RAZORPAY_TEAM_PLAN_ID")),
+  };
+}
+
+export function getRazorpayConfigForTier(
   tier: PaidPlanTier,
 ):
   | { ok: true; config: RazorpayConfig }
   | { ok: false; error: string } {
   const missing: string[] = [];
-  const paymentProvider = getEnvValue("PAYMENT_PROVIDER");
-  const keyId = getEnvValue("RAZORPAY_KEY_ID");
-  const keySecret = getEnvValue("RAZORPAY_KEY_SECRET");
-  const publicKeyId = getEnvValue("NEXT_PUBLIC_RAZORPAY_KEY_ID");
+  const paymentProvider = readEnv("PAYMENT_PROVIDER");
+  const keyId = readEnv("RAZORPAY_KEY_ID");
+  const keySecret = readEnv("RAZORPAY_KEY_SECRET");
+  const publicKeyId = readEnv("NEXT_PUBLIC_RAZORPAY_KEY_ID");
+  const appUrl = readEnv("NEXT_PUBLIC_APP_URL");
   const planEnvName = razorpayPlanEnv[tier];
-  const planId = getEnvValue(planEnvName);
+  const planId = readEnv(planEnvName);
 
   if (paymentProvider !== "razorpay") {
     missing.push("PAYMENT_PROVIDER=razorpay");
@@ -179,11 +226,19 @@ export function getRazorpayConfigForPlan(
   if (!keyId) missing.push("RAZORPAY_KEY_ID");
   if (!keySecret) missing.push("RAZORPAY_KEY_SECRET");
   if (!publicKeyId) missing.push("NEXT_PUBLIC_RAZORPAY_KEY_ID");
+  if (!appUrl) missing.push("NEXT_PUBLIC_APP_URL");
   if (!planId) missing.push(planEnvName);
 
-  if (missing.length > 0) {
+  if (
+    missing.length > 0 ||
+    !keyId ||
+    !keySecret ||
+    !publicKeyId ||
+    !appUrl ||
+    !planId
+  ) {
     const error = `Missing Razorpay config: ${missing.join(", ")}`;
-    console.error(`[billing] ${error}`);
+    console.error(`[billing] ${error}`, getBillingConfigDiagnostics());
     return { ok: false, error };
   }
 
@@ -193,10 +248,13 @@ export function getRazorpayConfigForPlan(
       keyId,
       keySecret,
       publicKeyId,
+      appUrl,
       planId,
     },
   };
 }
+
+export const getRazorpayConfigForPlan = getRazorpayConfigForTier;
 
 function emptyBilling(): DashboardBilling {
   return {
@@ -256,20 +314,33 @@ async function loadFixtureBilling(fixturePath: string) {
   return JSON.parse(await readFile(fixturePath, "utf8")) as DashboardBilling;
 }
 
-export function getRazorpayClient() {
-  if (cachedRazorpay) return cachedRazorpay;
+export function getRazorpayClient(
+  config?: Pick<RazorpayConfig, "keyId" | "keySecret">,
+) {
+  const keyId = config?.keyId ?? readEnv("RAZORPAY_KEY_ID");
+  const keySecret = config?.keySecret ?? readEnv("RAZORPAY_KEY_SECRET");
 
-  const keyId = process.env.RAZORPAY_KEY_ID?.trim();
-  const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
   if (!keyId || !keySecret) {
     throw new Error("RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required");
   }
 
-  cachedRazorpay = new Razorpay({
-    key_id: keyId,
-    key_secret: keySecret,
-  });
-  return cachedRazorpay;
+  if (
+    cachedRazorpay &&
+    cachedRazorpay.keyId === keyId &&
+    cachedRazorpay.keySecret === keySecret
+  ) {
+    return cachedRazorpay.client;
+  }
+
+  cachedRazorpay = {
+    keyId,
+    keySecret,
+    client: new Razorpay({
+      key_id: keyId,
+      key_secret: keySecret,
+    }),
+  };
+  return cachedRazorpay.client;
 }
 
 export async function getDashboardBilling(
@@ -322,7 +393,7 @@ export async function createRazorpaySubscription(
   userId: string,
   tier: PaidPlanTier,
 ): Promise<RazorpayCheckoutResult> {
-  const configResult = getRazorpayConfigForPlan(tier);
+  const configResult = getRazorpayConfigForTier(tier);
   if (!configResult.ok) {
     return {
       ok: false,
@@ -331,6 +402,15 @@ export async function createRazorpaySubscription(
     };
   }
   const { config } = configResult;
+
+  const planValidation = await validateRazorpayPlan(tier, config);
+  if (!planValidation.ok) {
+    return {
+      ok: false,
+      error: planValidation.error,
+      message: planValidation.error,
+    };
+  }
 
   const row = await findBillingRow({ id: userId });
   if (!row) {
@@ -344,24 +424,23 @@ export async function createRazorpaySubscription(
     row.razorpay_subscription_id &&
     (existingStatus === "created" || existingStatus === "pending")
   ) {
-    if (existingRequestedTier !== tier) {
+    if (existingRequestedTier === tier) {
       return {
-        ok: false,
-        error: "subscription_change_pending",
-        message:
-          "Another Razorpay subscription change is already pending. Complete or cancel it before selecting a different plan.",
+        ok: true,
+        provider: "razorpay",
+        keyId: config.publicKeyId,
+        subscriptionId: row.razorpay_subscription_id,
+        name: row.user_name,
+        email: row.user_email,
+        plan: tier,
       };
     }
 
-    return {
-      ok: true,
-      provider: "razorpay",
-      keyId: config.publicKeyId,
-      subscriptionId: row.razorpay_subscription_id,
-      name: row.user_name,
-      email: row.user_email,
-      plan: tier,
-    };
+    console.info("[billing] Replacing pending Razorpay checkout", {
+      fromTier: existingRequestedTier,
+      toTier: tier,
+      subscriptionId: maskIdentifier(row.razorpay_subscription_id),
+    });
   }
 
   if (
@@ -377,16 +456,34 @@ export async function createRazorpaySubscription(
     };
   }
 
-  const subscription = (await getRazorpayClient().subscriptions.create({
-    plan_id: config.planId,
-    total_count: 120,
-    quantity: 1,
-    customer_notify: true,
-    notes: {
-      gitfuse_user_id: row.user_id,
-      gitfuse_tier: tier,
-    },
-  })) as RazorpaySubscriptionEntity;
+  let subscription: RazorpaySubscriptionEntity;
+  try {
+    subscription = (await getRazorpayClient(config).subscriptions.create({
+      plan_id: config.planId,
+      total_count: 120,
+      quantity: 1,
+      customer_notify: true,
+      notes: {
+        gitfuse_user_id: row.user_id,
+        gitfuse_tier: tier,
+      },
+    })) as RazorpaySubscriptionEntity;
+  } catch (error) {
+    console.error("[billing] Razorpay subscription creation failed", {
+      tier,
+      planId: maskIdentifier(config.planId),
+      ...safeRazorpayError(error),
+    });
+    const description = safeRazorpayError(error).description;
+    const message = description
+      ? `Razorpay subscription creation failed for ${tier}: ${description}`
+      : `Razorpay subscription creation failed for ${tier}. Check that ${razorpayPlanEnv[tier]} belongs to the same Test/Live mode as your API keys.`;
+    return {
+      ok: false,
+      error: message,
+      message,
+    };
+  }
 
   const sql = getSql();
   await sql`
@@ -448,6 +545,23 @@ export async function createRazorpaySubscription(
     email: row.user_email,
     plan: tier,
   };
+}
+
+async function validateRazorpayPlan(tier: PaidPlanTier, config: RazorpayConfig) {
+  try {
+    await getRazorpayClient(config).plans.fetch(config.planId);
+    return { ok: true as const };
+  } catch (error) {
+    console.error("[billing] Razorpay plan validation failed", {
+      tier,
+      planId: maskIdentifier(config.planId),
+      ...safeRazorpayError(error),
+    });
+    return {
+      ok: false as const,
+      error: `Razorpay plan validation failed for ${tier}. Check that ${razorpayPlanEnv[tier]} belongs to the same Test/Live mode as your API keys.`,
+    };
+  }
 }
 
 export function verifyRazorpayCheckoutSignature(input: {
