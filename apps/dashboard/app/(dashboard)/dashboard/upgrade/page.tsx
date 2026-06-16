@@ -168,6 +168,7 @@ export default function UpgradePage() {
         name?: string;
         email?: string;
         plan?: "pro" | "team";
+        error?: string;
         message?: string;
       };
 
@@ -179,7 +180,9 @@ export default function UpgradePage() {
         !payload.plan
       ) {
         setCheckoutMessage(
-          payload.message ?? "Razorpay checkout is unavailable right now.",
+          payload.message ??
+            payload.error ??
+            "Razorpay checkout is unavailable right now.",
         );
         setCheckoutOpen(true);
         setCheckoutPendingTier(null);

@@ -72,6 +72,13 @@ type RazorpayPaymentEntity = {
   status?: string | null;
 };
 
+type RazorpayConfig = {
+  keyId: string;
+  keySecret: string;
+  publicKeyId: string;
+  planId: string;
+};
+
 export type RazorpayWebhookEvent = {
   event?: string;
   payload?: {
@@ -92,10 +99,7 @@ export type RazorpayCheckoutResult =
     }
   | {
       ok: false;
-      error:
-        | "Razorpay is not configured yet."
-        | "subscription_change_pending"
-        | "active_subscription_exists";
+      error: string;
       message: string;
     };
 
@@ -150,6 +154,48 @@ function planFromRazorpayPlanId(planId: string | null | undefined) {
   if (planId === process.env.RAZORPAY_PRO_PLAN_ID) return "pro" as const;
   if (planId === process.env.RAZORPAY_TEAM_PLAN_ID) return "team" as const;
   return null;
+}
+
+function getEnvValue(name: string) {
+  return process.env[name]?.trim() ?? "";
+}
+
+export function getRazorpayConfigForPlan(
+  tier: PaidPlanTier,
+):
+  | { ok: true; config: RazorpayConfig }
+  | { ok: false; error: string } {
+  const missing: string[] = [];
+  const paymentProvider = getEnvValue("PAYMENT_PROVIDER");
+  const keyId = getEnvValue("RAZORPAY_KEY_ID");
+  const keySecret = getEnvValue("RAZORPAY_KEY_SECRET");
+  const publicKeyId = getEnvValue("NEXT_PUBLIC_RAZORPAY_KEY_ID");
+  const planEnvName = razorpayPlanEnv[tier];
+  const planId = getEnvValue(planEnvName);
+
+  if (paymentProvider !== "razorpay") {
+    missing.push("PAYMENT_PROVIDER=razorpay");
+  }
+  if (!keyId) missing.push("RAZORPAY_KEY_ID");
+  if (!keySecret) missing.push("RAZORPAY_KEY_SECRET");
+  if (!publicKeyId) missing.push("NEXT_PUBLIC_RAZORPAY_KEY_ID");
+  if (!planId) missing.push(planEnvName);
+
+  if (missing.length > 0) {
+    const error = `Missing Razorpay config: ${missing.join(", ")}`;
+    console.error(`[billing] ${error}`);
+    return { ok: false, error };
+  }
+
+  return {
+    ok: true,
+    config: {
+      keyId,
+      keySecret,
+      publicKeyId,
+      planId,
+    },
+  };
 }
 
 function emptyBilling(): DashboardBilling {
@@ -276,24 +322,15 @@ export async function createRazorpaySubscription(
   userId: string,
   tier: PaidPlanTier,
 ): Promise<RazorpayCheckoutResult> {
-  const keyId =
-    process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID?.trim() ||
-    process.env.RAZORPAY_KEY_ID?.trim();
-  const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
-  const planId = process.env[razorpayPlanEnv[tier]]?.trim();
-
-  if (
-    process.env.PAYMENT_PROVIDER !== "razorpay" ||
-    !keyId ||
-    !keySecret ||
-    !planId
-  ) {
+  const configResult = getRazorpayConfigForPlan(tier);
+  if (!configResult.ok) {
     return {
       ok: false,
-      error: "Razorpay is not configured yet.",
-      message: "Razorpay is not configured yet.",
+      error: configResult.error,
+      message: configResult.error,
     };
   }
+  const { config } = configResult;
 
   const row = await findBillingRow({ id: userId });
   if (!row) {
@@ -319,7 +356,7 @@ export async function createRazorpaySubscription(
     return {
       ok: true,
       provider: "razorpay",
-      keyId,
+      keyId: config.publicKeyId,
       subscriptionId: row.razorpay_subscription_id,
       name: row.user_name,
       email: row.user_email,
@@ -341,7 +378,7 @@ export async function createRazorpaySubscription(
   }
 
   const subscription = (await getRazorpayClient().subscriptions.create({
-    plan_id: planId,
+    plan_id: config.planId,
     total_count: 120,
     quantity: 1,
     customer_notify: true,
@@ -373,7 +410,7 @@ export async function createRazorpaySubscription(
       'razorpay',
       ${subscription.customer_id ?? null},
       ${subscription.id},
-      ${planId},
+      ${config.planId},
       ${subscription.status ?? "created"},
       ${timestampToIso(subscription.current_start)},
       ${timestampToIso(subscription.current_end)},
@@ -405,7 +442,7 @@ export async function createRazorpaySubscription(
   return {
     ok: true,
     provider: "razorpay",
-    keyId,
+    keyId: config.publicKeyId,
     subscriptionId: subscription.id,
     name: row.user_name,
     email: row.user_email,

@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     const status =
       checkout.ok
         ? 200
-        : checkout.error === "Razorpay is not configured yet."
+        : checkout.error.startsWith("Missing Razorpay config:")
           ? 503
           : 409;
     return NextResponse.json(checkout, { status });
