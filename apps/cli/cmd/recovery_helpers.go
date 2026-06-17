@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 )
 
 type relayRepository struct {
@@ -27,28 +26,24 @@ func loadRelayRepositories() ([]relayRepository, error) {
 		}
 		return decodeRelayRepositories(content)
 	}
-	relayURL := strings.TrimRight(os.Getenv("GITFUSE_RELAY_URL"), "/")
-	token := os.Getenv("GITFUSE_TEST_TOKEN")
-	if relayURL == "" || token == "" {
-		return nil, fmt.Errorf("relay repository list unavailable; set GITFUSE_REPOS_FIXTURE or relay credentials")
+	if deviceToken() == "" {
+		return nil, fmt.Errorf("not authenticated; run 'gitfuse auth' first")
 	}
-	req, err := http.NewRequest(http.MethodGet, relayURL+"/v1/repos", nil)
+	req, err := http.NewRequest(http.MethodGet, relayBaseURL()+"/v1/repos", nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("authorization", "Bearer "+token)
-	resp, err := http.DefaultClient.Do(req)
+	body, status, err := doAuthorizedRequest(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("relay repo list failed with status %d", resp.StatusCode)
+	if status == http.StatusNoContent {
+		return []relayRepository{}, nil
 	}
 	var decoded struct {
 		Repositories []relayRepository `json:"repositories"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+	if err := json.Unmarshal(body, &decoded); err != nil {
 		return nil, err
 	}
 	return decoded.Repositories, nil

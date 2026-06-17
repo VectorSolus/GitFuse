@@ -41,8 +41,29 @@ func runConnect(cmd *cobra.Command) error {
 		return err
 	}
 	if len(matches) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No local matches found.")
-		fmt.Fprintln(cmd.OutOrStdout(), "Choose a manual path, run gitfuse restore <relay-entry-name>, or skip.")
+		if len(repos) == 0 {
+			fmt.Fprintln(cmd.OutOrStdout(), "No relay repositories found for this account.")
+			return nil
+		}
+		options := make([]tui.RepoOption, 0, len(repos))
+		for _, repo := range repos {
+			options = append(options, tui.RepoOption{Name: repo.DisplayName, Path: scanRoot, State: "remote"})
+		}
+		if os.Getenv("GITFUSE_NONINTERACTIVE") == "1" {
+			fmt.Fprintln(cmd.OutOrStdout(), "TUI repo picker launched.")
+		}
+		selected, err := tui.PickRepo(options)
+		if err != nil {
+			return err
+		}
+		pickedRepo, ok := findRelayRepository(selected.Name, repos)
+		if !ok {
+			return fmt.Errorf("selected relay repository not found")
+		}
+		if err := linkRelayRepository(scanRoot, pickedRepo); err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "Linked %s at %s.\n", pickedRepo.DisplayName, scanRoot)
 		return nil
 	}
 	options := make([]tui.RepoOption, 0, len(matches))
@@ -63,20 +84,43 @@ func runConnect(cmd *cobra.Command) error {
 			break
 		}
 	}
-	if _, err := config.WriteLocalConfig(picked.path, config.LocalConfig{
-		RootSHA:      picked.repo.RootSHA,
-		RelayEntryID: picked.repo.RelayEntryID,
-		DisplayName:  picked.repo.DisplayName,
-		RemoteURL:    picked.repo.RemoteURL,
-		Platform:     detectPlatform(picked.repo.RemoteURL),
-	}); err != nil {
-		return err
-	}
-	if _, err := workspace.WriteLedger(picked.path, workspace.Ledger{}); err != nil {
+	if err := linkRelayRepository(picked.path, picked.repo); err != nil {
 		return err
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Linked %s at %s.\n", picked.repo.DisplayName, picked.path)
 	return nil
+}
+
+func linkRelayRepository(path string, repo relayRepository) error {
+	canonical, err := canonicalPath(path)
+	if err != nil {
+		return err
+	}
+	if _, err := config.WriteLocalConfig(canonical, config.LocalConfig{
+		RootSHA:      repo.RootSHA,
+		RelayEntryID: repo.RelayEntryID,
+		DisplayName:  repo.DisplayName,
+		RemoteURL:    repo.RemoteURL,
+		Platform:     detectPlatform(repo.RemoteURL),
+	}); err != nil {
+		return err
+	}
+	if _, err := workspace.WriteLedger(canonical, workspace.Ledger{}); err != nil {
+		return err
+	}
+	credentials, _ := config.ReadCredentials()
+	if _, err := config.UpsertRepositoryRegistryEntry(config.RegistryEntry{
+		Name:         repo.DisplayName,
+		Path:         canonical,
+		RootSHA:      repo.RootSHA,
+		RelayEntryID: repo.RelayEntryID,
+		RemoteURL:    repo.RemoteURL,
+		DeviceID:     credentials.DeviceID,
+	}); err != nil {
+		return err
+	}
+	_, err = config.WriteActiveRepo(config.ActiveRepo{Name: repo.DisplayName, Path: canonical})
+	return err
 }
 
 type rootSHAMatch struct {

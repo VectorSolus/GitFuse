@@ -98,30 +98,26 @@ func runSync(ctx context.Context, cmd *cobra.Command, opts syncOptions, commitRa
 	}
 
 	encrypted := bundle.Bytes
-	relayURL := os.Getenv("GITFUSE_RELAY_URL")
-	token := os.Getenv("GITFUSE_TEST_TOKEN")
-	if relayURL != "" && token != "" {
-		client := relay.NewClient(relayURL, token)
-		queued, message, err := relay.UploadOrQueue(ctx, client, repoPath, relay.UploadRequest{
-			RelayEntryID: localCfg.RelayEntryID,
-			BundleHash:   bundle.SHA256,
-			CommitCount:  strconv.Itoa(len(bundle.Manifest.Commits)),
-			SizeBytes:    strconv.Itoa(len(encrypted)),
-			Payload:      encrypted,
-		})
-		if err != nil {
-			if message != "" {
-				fmt.Fprintln(cmd.OutOrStdout(), message)
-			}
-			if queued.Path != "" {
-				return nil
-			}
-			return err
+	token := deviceToken()
+	if token == "" {
+		return fmt.Errorf("not authenticated; run 'gitfuse auth' first")
+	}
+	client := relay.NewClient(relayBaseURL(), token)
+	queued, message, err := relay.UploadOrQueue(ctx, client, repoPath, relay.UploadRequest{
+		RelayEntryID: localCfg.RelayEntryID,
+		BundleHash:   bundle.SHA256,
+		CommitCount:  strconv.Itoa(len(bundle.Manifest.Commits)),
+		SizeBytes:    strconv.Itoa(len(encrypted)),
+		Payload:      encrypted,
+	})
+	if err != nil {
+		if message != "" {
+			fmt.Fprintln(cmd.OutOrStdout(), message)
 		}
-	} else {
-		if _, err := config.WriteLocalFile(config.GitfuseDir(repoPath)+"/last-sync.bundle", encrypted, 0o600); err != nil {
-			return err
+		if queued.Path != "" {
+			return nil
 		}
+		return err
 	}
 
 	head, err := currentHead(repoPath)

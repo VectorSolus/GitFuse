@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -38,6 +39,10 @@ func runAdd(ctx context.Context, cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+	repoPath, err = canonicalPath(repoPath)
+	if err != nil {
+		return err
+	}
 	if err := gfgit.PreflightCheck(repoPath); err != nil {
 		return err
 	}
@@ -46,9 +51,16 @@ func runAdd(ctx context.Context, cmd *cobra.Command) error {
 		return err
 	}
 	displayName := filepath.Base(repoPath)
-	relayEntryID, account, remoteURL := registerRepoIfPossible(ctx, rootSHA, displayName)
+	relayRepo, err := registerRepo(ctx, rootSHA, displayName)
+	if err != nil {
+		return err
+	}
+	credentials, _ := config.ReadCredentials()
+	account := credentials.Username
+	remoteURL := relayRepo.RemoteURL
+	relayEntryID := relayRepo.RelayEntryID
 	if relayEntryID == "" {
-		relayEntryID = "local-" + rootSHA[:12]
+		return fmt.Errorf("relay did not return a repository entry id")
 	}
 
 	if _, err := config.WriteLocalConfig(repoPath, config.LocalConfig{
@@ -70,8 +82,33 @@ func runAdd(ctx context.Context, cmd *cobra.Command) error {
 	if err := stageGitfuseFiles(repoPath); err != nil {
 		return err
 	}
+	if _, err := config.UpsertRepositoryRegistryEntry(config.RegistryEntry{
+		Name:         displayName,
+		Path:         repoPath,
+		RootSHA:      rootSHA,
+		RelayEntryID: relayEntryID,
+		RemoteURL:    remoteURL,
+		DeviceID:     credentials.DeviceID,
+	}); err != nil {
+		return fmt.Errorf("write global repository registry: %w", err)
+	}
+	if _, err := config.WriteActiveRepo(config.ActiveRepo{Name: displayName, Path: repoPath}); err != nil {
+		return fmt.Errorf("write active repository: %w", err)
+	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Registered %s with gitfuse.\n", displayName)
 	return nil
+}
+
+func canonicalPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return filepath.Clean(abs), nil
+	}
+	return filepath.Clean(resolved), nil
 }
 
 func ensureGitignore(repoPath string) error {
@@ -112,38 +149,49 @@ func stageGitfuseFiles(repoPath string) error {
 	return nil
 }
 
-func registerRepoIfPossible(ctx context.Context, rootSHA, displayName string) (relayEntryID, account, remoteURL string) {
-	relayURL := os.Getenv("GITFUSE_RELAY_URL")
-	token := os.Getenv("GITFUSE_TEST_TOKEN")
-	if relayURL == "" || token == "" {
-		return "", "", ""
+type registeredRelayRepo struct {
+	RelayEntryID string
+	RemoteURL    string
+}
+
+func registerRepo(ctx context.Context, rootSHA, displayName string) (registeredRelayRepo, error) {
+	token := deviceToken()
+	if token == "" {
+		return registeredRelayRepo{}, fmt.Errorf("not authenticated; run 'gitfuse auth' first")
 	}
 	payload, _ := json.Marshal(map[string]string{
 		"rootSha":     rootSHA,
 		"displayName": displayName,
 		"remoteUrl":   "",
 	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, relayURL+"/v1/repos", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, relayBaseURL()+"/v1/repos", bytes.NewReader(payload))
 	if err != nil {
-		return "", "", ""
+		return registeredRelayRepo{}, err
 	}
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", "", ""
+		return registeredRelayRepo{}, fmt.Errorf("register repository with relay: %w", err)
 	}
 	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return registeredRelayRepo{}, fmt.Errorf("relay repository registration failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
 	var decoded struct {
 		Repository struct {
 			RelayEntryID string `json:"relayEntryId"`
 			RemoteURL    string `json:"remoteUrl"`
 		} `json:"repository"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
-		return "", "", ""
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return registeredRelayRepo{}, err
 	}
-	return decoded.Repository.RelayEntryID, "", decoded.Repository.RemoteURL
+	return registeredRelayRepo{
+		RelayEntryID: decoded.Repository.RelayEntryID,
+		RemoteURL:    decoded.Repository.RemoteURL,
+	}, nil
 }
 
 func detectPlatform(remoteURL string) string {

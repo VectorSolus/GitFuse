@@ -137,6 +137,24 @@ func printAllStatuses(cmd *cobra.Command, repoPath string) error {
 }
 
 func discoverRegisteredRepos(start string) ([]repoStatus, error) {
+	registry, registryErr := config.ReadRepositoryRegistry()
+	if registryErr == nil && len(registry.Entries) > 0 {
+		statuses := make([]repoStatus, 0, len(registry.Entries))
+		for _, entry := range registry.Entries {
+			status, err := collectRepoStatus(entry.Path)
+			if err != nil {
+				status = repoStatus{
+					Path:         entry.Path,
+					DisplayName:  entry.Name,
+					RelayEntryID: entry.RelayEntryID,
+					RelayState:   "registered",
+				}
+			}
+			statuses = append(statuses, status)
+		}
+		return statuses, nil
+	}
+
 	root := start
 	if repoRoot, err := findRepoRoot(start); err == nil {
 		root = filepath.Dir(repoRoot)
@@ -219,12 +237,11 @@ func earliestExpiry(repoPath, relayEntryID string) (*time.Time, error) {
 		}
 		return &parsed, nil
 	}
-	relayURL := strings.TrimRight(os.Getenv("GITFUSE_RELAY_URL"), "/")
-	token := os.Getenv("GITFUSE_TEST_TOKEN")
-	if relayURL == "" || token == "" || relayEntryID == "" {
+	token := deviceToken()
+	if token == "" || relayEntryID == "" {
 		return nil, nil
 	}
-	req, err := http.NewRequest(http.MethodGet, relayURL+"/v1/bundles/"+relayEntryID, nil)
+	req, err := http.NewRequest(http.MethodGet, relayBaseURL()+"/v1/bundles/"+relayEntryID, nil)
 	if err != nil {
 		return nil, err
 	}

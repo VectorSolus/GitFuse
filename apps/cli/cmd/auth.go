@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gitfuse/gitfuse/apps/cli/internal/config"
@@ -47,20 +48,30 @@ func runAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) error {
 		}
 	}
 
-	relayURL := os.Getenv("GITFUSE_RELAY_URL")
-	if relayURL == "" {
-		relayURL = "http://localhost:8787"
-	}
+	relayURL := relayBaseURL()
 	approvalBase := os.Getenv("GITFUSE_AUTH_URL")
 	if approvalBase == "" {
-		approvalBase = "https://gitfuse.dev/cli-auth"
+		dashboardURL := strings.TrimRight(os.Getenv("GITFUSE_DASHBOARD_URL"), "/")
+		if dashboardURL == "" {
+			dashboardURL = "http://localhost:3000"
+		}
+		approvalBase = dashboardURL + "/cli-auth"
 	}
+	approvalBase = strings.TrimRight(approvalBase, "/")
 	deviceName, _ := os.Hostname()
 	if deviceName == "" {
 		deviceName = "gitfuse-device"
 	}
+	deviceID, err := config.EnsureDeviceID()
+	if err != nil {
+		return err
+	}
 
-	if err := postJSON(ctx, relayURL+"/v1/auth/device", map[string]string{"code": code, "deviceName": deviceName}, nil); err != nil {
+	if err := postJSON(ctx, relayURL+"/v1/auth/device", map[string]string{
+		"code":       code,
+		"deviceName": deviceName,
+		"deviceId":   deviceID,
+	}, nil); err != nil {
 		return err
 	}
 
@@ -90,6 +101,7 @@ func runAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) error {
 			if _, err := config.WriteCredentials(config.Credentials{
 				Username:     result.Username,
 				Token:        result.Token,
+				DeviceID:     firstNonEmpty(result.DeviceID, deviceID),
 				Key:          key,
 				RegisteredAt: time.Now(),
 			}); err != nil {
@@ -110,6 +122,7 @@ type pollResponse struct {
 	Approved bool   `json:"approved"`
 	Token    string `json:"token"`
 	Username string `json:"username"`
+	DeviceID string `json:"deviceId"`
 }
 
 func pollAuth(ctx context.Context, relayURL, code string) (pollResponse, error) {
@@ -178,4 +191,13 @@ func durationFromEnv(name string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return parsed
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
