@@ -16,7 +16,7 @@ type RelayDatabaseUser = {
 
 let cachedSql: postgres.Sql | null = null;
 
-function getSql() {
+export function getRelaySql() {
   if (cachedSql) return cachedSql;
   const connectionString = process.env.DATABASE_URL?.trim();
   if (!connectionString) return null;
@@ -43,7 +43,7 @@ export function relayDatabaseConfigured() {
 }
 
 export async function findRelayDatabaseUserById(userId: string) {
-  const sql = getSql();
+  const sql = getRelaySql();
   if (!sql) return null;
 
   const [user] = await sql<RelayDatabaseUser[]>`
@@ -68,7 +68,7 @@ export async function findRelayDatabaseUserByIdentity(
   githubUsername: string,
   email?: string | null,
 ) {
-  const sql = getSql();
+  const sql = getRelaySql();
   if (!sql) return null;
 
   const [user] = await sql<RelayDatabaseUser[]>`
@@ -95,7 +95,7 @@ export async function ensureRelayDatabaseUser(
   githubUsername: string,
   email: string,
 ) {
-  const sql = getSql();
+  const sql = getRelaySql();
   if (!sql) return null;
 
   const existing = await findRelayDatabaseUserByIdentity(

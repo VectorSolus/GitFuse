@@ -32,6 +32,7 @@ export type RelayError =
 export type RegisterDeviceRequest = {
   code: string;
   deviceName: string;
+  deviceId?: string;
 };
 
 export type RegisterDeviceResponse = {
@@ -43,12 +44,14 @@ export type ApproveAuthRequest = {
   code: string;
   githubUsername: string;
   email?: string;
+  deviceId?: string;
 };
 
 export type PollAuthResponse = {
   approved: boolean;
   token?: string;
   username?: string;
+  deviceId?: string;
 };
 
 export type CreateRepoRequest = {

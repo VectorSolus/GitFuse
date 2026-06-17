@@ -12,6 +12,7 @@ import {
   ensureRelayDatabaseUser,
   findRelayDatabaseUserById,
   findRelayDatabaseUserByIdentity,
+  getRelaySql,
   relayDatabaseConfigured
 } from "./postgres";
 
@@ -33,6 +34,7 @@ type AuthSession = {
   id: string;
   code: string;
   userId: string | null;
+  deviceId: string | null;
   deviceName: string;
   approvedAt: string | null;
   expiresAt: string;
@@ -49,6 +51,11 @@ const authSessions = new Map<string, AuthSession>();
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function toIso(value: Date | string | null | undefined) {
+  if (!value) return null;
+  return value instanceof Date ? value.toISOString() : value;
 }
 
 function hashToken(token: string) {
@@ -68,25 +75,117 @@ function userRepositoryIds(userId: string) {
   return new Set([...repositories.values()].filter((repo) => repo.userId === userId).map((repo) => repo.id));
 }
 
-function userStorageBytes(userId: string) {
+async function userStorageBytes(userId: string) {
+  const sql = getRelaySql();
+  if (sql) {
+    const [row] = await sql<{ total: number | string | null }[]>`
+      select coalesce(sum(bundles.size_bytes), 0)::bigint as total
+      from bundles
+      join repositories on repositories.id = bundles.repository_id
+      where repositories.user_id = ${userId}
+        and bundles.status = 'active'
+    `;
+    return Number(row?.total ?? 0);
+  }
+
   const repositoryIds = userRepositoryIds(userId);
   return [...bundles.values()]
     .filter((bundle) => repositoryIds.has(bundle.repositoryId) && bundle.status === "active")
     .reduce((total, bundle) => total + bundle.sizeBytes, 0);
 }
 
+function mapRepository(row: {
+  id: string;
+  user_id: string;
+  root_sha: string;
+  display_name: string;
+  remote_url: string | null;
+  relay_entry_id: string;
+  created_at: Date | string;
+  last_synced_at: Date | string | null;
+}): Repository {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    rootSha: row.root_sha,
+    displayName: row.display_name,
+    remoteUrl: row.remote_url,
+    relayEntryId: row.relay_entry_id,
+    createdAt: toIso(row.created_at) ?? "",
+    lastSyncedAt: toIso(row.last_synced_at)
+  };
+}
+
+function mapBundle(row: {
+  id: string;
+  repository_id: string;
+  device_id: string;
+  bundle_hash: string;
+  commit_count: number;
+  size_bytes: number | string;
+  r2_key: string;
+  status: BundleStatus;
+  parent_bundle_id: string | null;
+  created_at: Date | string;
+  expires_at: Date | string;
+}): Bundle {
+  return {
+    id: row.id,
+    repositoryId: row.repository_id,
+    deviceId: row.device_id,
+    bundleHash: row.bundle_hash,
+    commitCount: Number(row.commit_count),
+    sizeBytes: Number(row.size_bytes),
+    r2Key: row.r2_key,
+    status: row.status,
+    parentBundleId: row.parent_bundle_id,
+    createdAt: toIso(row.created_at) ?? "",
+    expiresAt: toIso(row.expires_at) ?? ""
+  };
+}
+
+function mapDevice(row: {
+  id: string;
+  user_id: string;
+  name: string;
+  last_active_at: Date | string | null;
+  created_at: Date | string;
+  revoked_at: Date | string | null;
+}): Device {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    lastActiveAt: toIso(row.last_active_at),
+    createdAt: toIso(row.created_at) ?? "",
+    revokedAt: toIso(row.revoked_at)
+  };
+}
+
 export type LimitCheck = { ok: true } | { ok: false; limit: LimitName; current: number; max: number };
 
 export async function checkRepoLimit(userId: string): Promise<LimitCheck> {
   const max = numericLimit(PLAN_LIMITS[await tierForUser(userId)].repos);
-  const current = [...repositories.values()].filter((repo) => repo.userId === userId).length;
+  const sql = getRelaySql();
+  const current = sql
+    ? Number(
+        (
+          await sql<{ count: number | string }[]>`
+            select count(*)::int as count
+            from repositories
+            where user_id = ${userId}
+          `
+        )[0]?.count ?? 0
+      )
+    : [...repositories.values()].filter((repo) => repo.userId === userId).length;
   if (max !== null && current >= max) return { ok: false, limit: "repos", current: current + 1, max };
   return { ok: true };
 }
 
 export async function checkDeviceLimitForApproval(
   githubUsername: string,
-  email?: string | null
+  email?: string | null,
+  deviceId?: string | null
 ): Promise<LimitCheck> {
   const databaseUser = await findRelayDatabaseUserByIdentity(
     githubUsername,
@@ -99,7 +198,41 @@ export async function checkDeviceLimitForApproval(
     );
   if (!user) return { ok: true };
   const max = numericLimit(PLAN_LIMITS[user.tier].devices);
-  const current = [...devices.values()].filter((device) => device.userId === user.id && device.revokedAt === null).length;
+  const sql = getRelaySql();
+  if (deviceId) {
+    if (sql) {
+      const [existing] = await sql<{ id: string }[]>`
+        select id
+        from devices
+        where id = ${deviceId}
+          and user_id = ${user.id}
+          and revoked_at is null
+        limit 1
+      `;
+      if (existing) return { ok: true };
+    } else if (
+      [...devices.values()].some(
+        (device) =>
+          device.id === deviceId &&
+          device.userId === user.id &&
+          device.revokedAt === null
+      )
+    ) {
+      return { ok: true };
+    }
+  }
+  const current = sql
+    ? Number(
+        (
+          await sql<{ count: number | string }[]>`
+            select count(*)::int as count
+            from devices
+            where user_id = ${user.id}
+              and revoked_at is null
+          `
+        )[0]?.count ?? 0
+      )
+    : [...devices.values()].filter((device) => device.userId === user.id && device.revokedAt === null).length;
   if (max !== null && current >= max) return { ok: false, limit: "devices", current: current + 1, max };
   return { ok: true };
 }
@@ -110,7 +243,7 @@ export async function checkBundleUploadLimits(userId: string, sizeBytes: number)
     return { ok: false, limit: "bundle_size", current: sizeBytes, max: limits.bundleSizeBytes };
   }
 
-  const currentStorage = userStorageBytes(userId);
+  const currentStorage = await userStorageBytes(userId);
   if (currentStorage + sizeBytes > limits.storageTotalBytes) {
     return { ok: false, limit: "storage", current: currentStorage + sizeBytes, max: limits.storageTotalBytes };
   }
@@ -124,6 +257,32 @@ function relayEntryId(displayName: string) {
 
 export async function authenticateToken(token: string): Promise<AuthenticatedDevice | null> {
   const tokenHash = hashToken(token);
+  const sql = getRelaySql();
+  if (sql) {
+    const [row] = await sql<{
+      device_id: string;
+      user_id: string;
+      github_username: string;
+    }[]>`
+      update devices
+      set last_active_at = now()
+      from users
+      where devices.user_id = users.id
+        and devices.token_hash = ${tokenHash}
+        and devices.revoked_at is null
+      returning devices.id as device_id,
+                devices.user_id,
+                users.github_username
+    `;
+    if (!row) return null;
+    return {
+      tokenHash,
+      userId: row.user_id,
+      deviceId: row.device_id,
+      username: row.github_username
+    };
+  }
+
   for (const device of devices.values()) {
     if (device.tokenHash === tokenHash && device.revokedAt === null) {
       device.lastActiveAt = nowIso();
@@ -142,11 +301,12 @@ export async function authenticateToken(token: string): Promise<AuthenticatedDev
   return null;
 }
 
-export async function createAuthSession(code: string, deviceName: string) {
+export async function createAuthSession(code: string, deviceName: string, deviceId?: string | null) {
   const session: AuthSession = {
     id: randomUUID(),
     code,
     userId: null,
+    deviceId: deviceId ?? null,
     deviceName,
     approvedAt: null,
     expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
@@ -154,11 +314,57 @@ export async function createAuthSession(code: string, deviceName: string) {
     token: null
   };
   authSessions.set(code, session);
+  const sql = getRelaySql();
+  if (sql) {
+    await sql`
+      insert into cli_auth_sessions (code, device_name, expires_at)
+      values (${code}, ${deviceName}, ${session.expiresAt})
+      on conflict (code)
+      do update set
+        device_name = excluded.device_name,
+        user_id = null,
+        approved_at = null,
+        expires_at = excluded.expires_at,
+        created_at = now()
+    `;
+  }
   return session;
 }
 
 export async function approveAuthSession(code: string, githubUsername: string, email = `${githubUsername}@users.noreply.github.com`) {
-  const session = authSessions.get(code);
+  let session = authSessions.get(code);
+  const sql = getRelaySql();
+  if (!session && sql) {
+    const [row] = await sql<{
+      id: string;
+      code: string;
+      user_id: string | null;
+      device_id?: string | null;
+      device_name: string;
+      approved_at: Date | string | null;
+      expires_at: Date | string;
+      created_at: Date | string;
+    }[]>`
+      select id, code, user_id, device_name, approved_at, expires_at, created_at
+      from cli_auth_sessions
+      where code = ${code}
+      limit 1
+    `;
+    if (row) {
+      session = {
+        id: row.id,
+        code: row.code,
+        userId: row.user_id,
+        deviceId: row.device_id ?? null,
+        deviceName: row.device_name,
+        approvedAt: toIso(row.approved_at),
+        expiresAt: toIso(row.expires_at) ?? "",
+        createdAt: toIso(row.created_at) ?? "",
+        token: null
+      };
+      authSessions.set(code, session);
+    }
+  }
   if (!session || new Date(session.expiresAt).getTime() < Date.now()) return null;
 
   const databaseUser = await ensureRelayDatabaseUser(
@@ -182,7 +388,7 @@ export async function approveAuthSession(code: string, githubUsername: string, e
 
   const token = `gf_${randomBytes(32).toString("base64url")}`;
   const device: Device & { tokenHash: string; token: string } = {
-    id: randomUUID(),
+    id: session.deviceId ?? randomUUID(),
     userId: user.id,
     name: session.deviceName,
     tokenHash: hashToken(token),
@@ -193,10 +399,34 @@ export async function approveAuthSession(code: string, githubUsername: string, e
   };
   devices.set(device.id, device);
 
+  if (sql) {
+    await sql`
+      insert into devices (id, user_id, name, token_hash, last_active_at, created_at, revoked_at)
+      values (${device.id}, ${user.id}, ${device.name}, ${device.tokenHash}, now(), now(), null)
+      on conflict (id)
+      do update set
+        name = excluded.name,
+        token_hash = excluded.token_hash,
+        last_active_at = now(),
+        revoked_at = null
+    `;
+    await sql`
+      update cli_auth_sessions
+      set user_id = ${user.id},
+          approved_at = now()
+      where code = ${code}
+    `;
+  }
+
   session.userId = user.id;
+  session.deviceId = device.id;
   session.approvedAt = nowIso();
   session.token = token;
   return { session, user, token };
+}
+
+export function authSessionDeviceId(code: string) {
+  return authSessions.get(code)?.deviceId ?? null;
 }
 
 export async function pollAuthSession(code: string) {
@@ -204,14 +434,44 @@ export async function pollAuthSession(code: string) {
   if (!session || new Date(session.expiresAt).getTime() < Date.now()) return null;
   if (!session.approvedAt || !session.userId || !session.token) return { approved: false as const };
   const user = users.get(session.userId);
-  return { approved: true as const, token: session.token, username: user?.githubUsername ?? "" };
+  return {
+    approved: true as const,
+    token: session.token,
+    username: user?.githubUsername ?? "",
+    deviceId: [...devices.values()].find((device) => device.token === session.token)?.id
+  };
 }
 
 export async function listRepos(userId: string) {
+  const sql = getRelaySql();
+  if (sql) {
+    const rows = await sql<Parameters<typeof mapRepository>[0][]>`
+      select id, user_id, root_sha, display_name, remote_url, relay_entry_id, created_at, last_synced_at
+      from repositories
+      where user_id = ${userId}
+      order by last_synced_at desc nulls last, created_at desc
+    `;
+    return rows.map(mapRepository);
+  }
   return [...repositories.values()].filter((repo) => repo.userId === userId);
 }
 
 export async function createRepo(userId: string, input: { rootSha: string; displayName: string; remoteUrl?: string | null }) {
+  const sql = getRelaySql();
+  if (sql) {
+    const relayId = relayEntryId(input.displayName);
+    const [row] = await sql<Parameters<typeof mapRepository>[0][]>`
+      insert into repositories (user_id, root_sha, display_name, remote_url, relay_entry_id)
+      values (${userId}, ${input.rootSha}, ${input.displayName}, ${input.remoteUrl ?? null}, ${relayId})
+      on conflict (user_id, root_sha)
+      do update set
+        display_name = excluded.display_name,
+        remote_url = coalesce(excluded.remote_url, repositories.remote_url)
+      returning id, user_id, root_sha, display_name, remote_url, relay_entry_id, created_at, last_synced_at
+    `;
+    return mapRepository(row);
+  }
+
   const duplicate = [...repositories.values()].find((repo) => repo.userId === userId && repo.rootSha === input.rootSha);
   if (duplicate) return duplicate;
 
@@ -230,6 +490,17 @@ export async function createRepo(userId: string, input: { rootSha: string; displ
 }
 
 export async function deleteRepo(userId: string, relayEntryIdValue: string) {
+  const sql = getRelaySql();
+  if (sql) {
+    const [row] = await sql<{ id: string }[]>`
+      delete from repositories
+      where user_id = ${userId}
+        and relay_entry_id = ${relayEntryIdValue}
+      returning id
+    `;
+    return Boolean(row);
+  }
+
   const repo = [...repositories.values()].find((item) => item.userId === userId && item.relayEntryId === relayEntryIdValue);
   if (!repo) return false;
   repositories.delete(repo.id);
@@ -237,6 +508,18 @@ export async function deleteRepo(userId: string, relayEntryIdValue: string) {
 }
 
 export async function findRepoByRelayEntry(userId: string, relayEntryIdValue: string) {
+  const sql = getRelaySql();
+  if (sql) {
+    const [row] = await sql<Parameters<typeof mapRepository>[0][]>`
+      select id, user_id, root_sha, display_name, remote_url, relay_entry_id, created_at, last_synced_at
+      from repositories
+      where user_id = ${userId}
+        and relay_entry_id = ${relayEntryIdValue}
+      limit 1
+    `;
+    return row ? mapRepository(row) : null;
+  }
+
   return [...repositories.values()].find((repo) => repo.userId === userId && repo.relayEntryId === relayEntryIdValue) ?? null;
 }
 
@@ -250,6 +533,36 @@ export async function createBundle(input: {
   parentBundleId?: string | null;
   expiresAt: string;
 }) {
+  const sql = getRelaySql();
+  if (sql) {
+    const [row] = await sql<Parameters<typeof mapBundle>[0][]>`
+      insert into bundles (
+        repository_id,
+        device_id,
+        bundle_hash,
+        commit_count,
+        size_bytes,
+        r2_key,
+        status,
+        parent_bundle_id,
+        expires_at
+      )
+      values (
+        ${input.repositoryId},
+        ${input.deviceId},
+        ${input.bundleHash},
+        ${input.commitCount},
+        ${input.sizeBytes},
+        ${input.r2Key},
+        'active',
+        ${input.parentBundleId ?? null},
+        ${input.expiresAt}
+      )
+      returning id, repository_id, device_id, bundle_hash, commit_count, size_bytes, r2_key, status, parent_bundle_id, created_at, expires_at
+    `;
+    return mapBundle(row);
+  }
+
   const bundle: Bundle = {
     id: randomUUID(),
     repositoryId: input.repositoryId,
@@ -268,14 +581,48 @@ export async function createBundle(input: {
 }
 
 export async function listBundles(repositoryId: string) {
+  const sql = getRelaySql();
+  if (sql) {
+    const rows = await sql<Parameters<typeof mapBundle>[0][]>`
+      select id, repository_id, device_id, bundle_hash, commit_count, size_bytes, r2_key, status, parent_bundle_id, created_at, expires_at
+      from bundles
+      where repository_id = ${repositoryId}
+        and status = 'active'
+      order by created_at asc
+    `;
+    return rows.map(mapBundle);
+  }
+
   return [...bundles.values()].filter((bundle) => bundle.repositoryId === repositoryId && bundle.status === "active");
 }
 
 export async function findBundle(bundleId: string) {
+  const sql = getRelaySql();
+  if (sql) {
+    const [row] = await sql<Parameters<typeof mapBundle>[0][]>`
+      select id, repository_id, device_id, bundle_hash, commit_count, size_bytes, r2_key, status, parent_bundle_id, created_at, expires_at
+      from bundles
+      where id = ${bundleId}
+      limit 1
+    `;
+    return row ? mapBundle(row) : null;
+  }
+
   return bundles.get(bundleId) ?? null;
 }
 
 export async function updateBundleStatus(bundleId: string, status: BundleStatus) {
+  const sql = getRelaySql();
+  if (sql) {
+    const [row] = await sql<Parameters<typeof mapBundle>[0][]>`
+      update bundles
+      set status = ${status}
+      where id = ${bundleId}
+      returning id, repository_id, device_id, bundle_hash, commit_count, size_bytes, r2_key, status, parent_bundle_id, created_at, expires_at
+    `;
+    return row ? mapBundle(row) : null;
+  }
+
   const bundle = bundles.get(bundleId);
   if (!bundle) return null;
   const updated = { ...bundle, status };
@@ -284,6 +631,17 @@ export async function updateBundleStatus(bundleId: string, status: BundleStatus)
 }
 
 export async function findExpiredActiveBundles(now = new Date()) {
+  const sql = getRelaySql();
+  if (sql) {
+    const rows = await sql<Parameters<typeof mapBundle>[0][]>`
+      select id, repository_id, device_id, bundle_hash, commit_count, size_bytes, r2_key, status, parent_bundle_id, created_at, expires_at
+      from bundles
+      where status = 'active'
+        and expires_at <= ${now.toISOString()}
+    `;
+    return rows.map(mapBundle);
+  }
+
   const threshold = now.getTime();
   return [...bundles.values()].filter(
     (bundle) => bundle.status === "active" && new Date(bundle.expiresAt).getTime() <= threshold
@@ -295,6 +653,26 @@ export async function expireBundle(bundleId: string) {
 }
 
 export async function listBundleStatusSummary() {
+  const sql = getRelaySql();
+  if (sql) {
+    const rows = await sql<{
+      id: string;
+      r2_key: string;
+      status: BundleStatus;
+      expires_at: Date | string;
+    }[]>`
+      select id, r2_key, status, expires_at
+      from bundles
+      order by r2_key asc
+    `;
+    return rows.map((bundle) => ({
+      id: bundle.id,
+      r2Key: bundle.r2_key,
+      status: bundle.status,
+      expiresAt: toIso(bundle.expires_at) ?? ""
+    }));
+  }
+
   return [...bundles.values()]
     .map((bundle) => ({
       id: bundle.id,
@@ -312,18 +690,86 @@ export async function recordSyncEvent(input: {
   commitCount: number;
   bundleSizeBytes: number;
 }) {
+  const sql = getRelaySql();
+  if (sql) {
+    const [row] = await sql<{
+      id: string;
+      repository_id: string;
+      device_id: string;
+      event_type: SyncEventType;
+      commit_count: number;
+      bundle_size_bytes: number | string;
+      created_at: Date | string;
+    }[]>`
+      insert into sync_events (
+        repository_id,
+        device_id,
+        event_type,
+        commit_count,
+        bundle_size_bytes
+      )
+      values (
+        ${input.repositoryId},
+        ${input.deviceId},
+        ${input.eventType},
+        ${input.commitCount},
+        ${input.bundleSizeBytes}
+      )
+      returning id, repository_id, device_id, event_type, commit_count, bundle_size_bytes, created_at
+    `;
+    await sql`
+      update repositories
+      set last_synced_at = ${toIso(row.created_at)}
+      where id = ${input.repositoryId}
+    `;
+    return {
+      id: row.id,
+      repositoryId: row.repository_id,
+      deviceId: row.device_id,
+      eventType: row.event_type,
+      commitCount: Number(row.commit_count),
+      bundleSizeBytes: Number(row.bundle_size_bytes),
+      createdAt: toIso(row.created_at) ?? ""
+    };
+  }
+
   const event: SyncEvent = { id: randomUUID(), createdAt: nowIso(), ...input };
   syncEvents.push(event);
+  const repo = repositories.get(input.repositoryId);
+  if (repo) repo.lastSyncedAt = event.createdAt;
   return event;
 }
 
 export async function listDevices(userId: string) {
+  const sql = getRelaySql();
+  if (sql) {
+    const rows = await sql<Parameters<typeof mapDevice>[0][]>`
+      select id, user_id, name, last_active_at, created_at, revoked_at
+      from devices
+      where user_id = ${userId}
+      order by revoked_at nulls first, last_active_at desc nulls last, created_at desc
+    `;
+    return rows.map(mapDevice);
+  }
+
   return [...devices.values()]
     .filter((device) => device.userId === userId)
     .map(({ tokenHash: _tokenHash, token: _token, ...device }) => device);
 }
 
 export async function revokeDevice(userId: string, deviceId: string) {
+  const sql = getRelaySql();
+  if (sql) {
+    const [row] = await sql<{ id: string }[]>`
+      update devices
+      set revoked_at = coalesce(revoked_at, now())
+      where id = ${deviceId}
+        and user_id = ${userId}
+      returning id
+    `;
+    return Boolean(row);
+  }
+
   const device = devices.get(deviceId);
   if (!device || device.userId !== userId) return false;
   device.revokedAt = nowIso();
@@ -333,7 +779,7 @@ export async function revokeDevice(userId: string, deviceId: string) {
 export async function getUsage(userId: string): Promise<UsageSummary> {
   const userRepos = await listRepos(userId);
   const userDevices = await listDevices(userId);
-  const storageBytes = userStorageBytes(userId);
+  const storageBytes = await userStorageBytes(userId);
   const tier = await tierForUser(userId);
   const limits = PLAN_LIMITS[tier];
   return {
