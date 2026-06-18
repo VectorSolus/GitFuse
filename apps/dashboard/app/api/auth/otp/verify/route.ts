@@ -13,7 +13,7 @@ export async function POST(request: Request) {
 
   const email = normalizeEmail(String(body?.email ?? ""));
   const code = String(body?.code ?? "");
-  const purpose = body?.purpose === "add_email" ? "add_email" : "sign_in_email";
+  const purpose = "sign_in_email";
 
   if (!isValidEmail(email)) {
     return NextResponse.json({ error: "INVALID_EMAIL" }, { status: 400 });
