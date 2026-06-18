@@ -1,19 +1,33 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { HistoryGridClient } from "@/components/dashboard/history-grid-client";
 import { useDashboardData, type DashboardData } from "@/hooks/use-dashboard-data";
+import {
+  buildHistoryActivityByDate,
+  buildYearCalendar,
+  formatHistoryDateLabel,
+  getDefaultSelectedHistoryDate,
+  summarizeHistoryEvents,
+  toLocalDateKey,
+} from "@/lib/history-calendar";
 
 type CommitItem = {
   sha: string;
   message: string;
-  author: string;
+  author: string | null;
   time: string;
 };
 
 type RepoSyncItem = {
+  id: string;
   repo: string;
   branch: string;
+  device: string;
+  syncedAt: string;
+  bundleSizeBytes: number;
   direction: "sync" | "pull" | "drop" | "undo" | "rebase-sync";
   commitCount: number;
   commits: CommitItem[];
@@ -24,77 +38,78 @@ type SyncDay = {
   repositories: RepoSyncItem[];
 };
 
-type GraphDay = {
-  date: string;
-  label: string;
-  count: number;
-  level: number;
-  data?: SyncDay;
-};
-
-const monthLabels = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-
 export default function HistoryPage() {
-  const { data } = useDashboardData();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentYear = new Date().getFullYear();
+  const queryYear = Number(searchParams.get("year"));
+  const requestedYear =
+    Number.isInteger(queryYear) && queryYear >= 1970 && queryYear <= currentYear
+      ? queryYear
+      : currentYear;
+  const { data, loading } = useDashboardData(requestedYear);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const selectedYear = data?.selectedHistoryYear ?? currentYear;
   const syncHistory = useMemo(() => buildSyncHistory(data?.history ?? []), [data?.history]);
 
   const historyByDate = useMemo(() => {
     return new Map(syncHistory.map((day) => [day.date, day]));
   }, [syncHistory]);
 
-  const graphDays = useMemo(
-    () => buildGraphDays(historyByDate),
-    [historyByDate],
+  const calendar = useMemo(
+    () => buildYearCalendar(selectedYear),
+    [selectedYear],
+  );
+  const activityByDate = useMemo(
+    () =>
+      buildHistoryActivityByDate(
+        data?.history ?? [],
+        (event) => event.createdAt,
+        (event) => event.commitCount,
+      ),
+    [data?.history],
   );
 
-  const selectedDay = selectedDate ? historyByDate.get(selectedDate) : undefined;
+  const defaultSelectedDate = useMemo(
+    () =>
+      getDefaultSelectedHistoryDate(
+        [...activityByDate.values()]
+          .filter((activity) => activity.commitCount > 0)
+          .map((activity) => activity.dateKey),
+        selectedYear,
+      ),
+    [activityByDate, selectedYear],
+  );
+  const activeSelectedDate = selectedDate ?? defaultSelectedDate;
+  const selectedDay = historyByDate.get(activeSelectedDate);
   const selectedCommitCount = selectedDay ? countCommits(selectedDay) : 0;
 
+  useEffect(() => {
+    setSelectedDate(null);
+  }, [selectedYear]);
+
+  useEffect(() => {
+    if (!data || data.selectedHistoryYear === requestedYear) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("year", String(data.selectedHistoryYear));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [data, pathname, requestedYear, router, searchParams]);
+
+  function selectYear(year: number) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("year", String(year));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
   const totals = useMemo(() => {
-    const syncedDays = syncHistory.length;
-
-    const totalRepos = new Set(
-      syncHistory.flatMap((day) =>
-        day.repositories.map((repo) => repo.repo),
-      ),
-    ).size;
-
-    const totalCommits = syncHistory.reduce((dayTotal, day) => {
-      return (
-        dayTotal +
-        day.repositories.reduce(
-          (repoTotal, repo) => repoTotal + repo.commitCount,
-          0,
-        )
-      );
-    }, 0);
-
-    const totalBundles = syncHistory.reduce(
-      (total, day) => total + day.repositories.length,
-      0,
+    return summarizeHistoryEvents(
+      data?.history ?? [],
+      (event) => event.createdAt,
+      (event) => event.commitCount,
+      (event) => event.repositoryName,
     );
-
-    return {
-      syncedDays,
-      totalRepos,
-      totalCommits,
-      totalBundles,
-    };
-  }, [syncHistory]);
+  }, [data?.history]);
 
   return (
     <div className="gf-history-page">
@@ -143,66 +158,29 @@ export default function HistoryPage() {
               <h3>Relay activity</h3>
             </div>
 
-            <span className="gf-history-pill">Last 52 weeks</span>
-          </div>
-
-          <div className="gf-history-graph-shell">
-            <div className="gf-history-month-row">
-              {buildMonthMarkers(graphDays).map((month) => (
-                <span
-                  key={`${month.label}-${month.column}`}
-                  style={{ gridColumnStart: month.column }}
-                >
-                  {month.label}
-                </span>
-              ))}
-            </div>
-
-            <div className="gf-history-graph-body">
-              <div className="gf-history-weekdays">
-                <span>Mon</span>
-                <span>Wed</span>
-                <span>Fri</span>
-              </div>
-
-              <div className="gf-history-squares" aria-label="Sync history graph">
-                {graphDays.map((day) => (
-                  <button
-                    key={day.date}
-                    type="button"
-                    className={`gf-history-square level-${day.level} ${
-                      selectedDate === day.date ? "is-selected" : ""
-                    }`}
-                    aria-label={`${day.label}: ${day.count} synced commit${
-                      day.count === 1 ? "" : "s"
-                    }`}
-                    onClick={() => setSelectedDate(day.date)}
-                  >
-                    <span className="gf-history-tooltip">
-                      <strong>{day.label}</strong>
-                      <small>
-                        {day.count === 0
-                          ? "No commits synced"
-                          : `${day.count} commit${
-                              day.count === 1 ? "" : "s"
-                            } synced`}
-                      </small>
-                    </span>
-                  </button>
+            <label className="gf-history-year-select">
+              <span className="sr-only">Select history year</span>
+              <select
+                value={selectedYear}
+                onChange={(event) => selectYear(Number(event.target.value))}
+                disabled={loading}
+              >
+                {(data?.historyYears ?? [currentYear]).map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
                 ))}
-              </div>
-            </div>
-
-            <div className="gf-history-legend">
-              <span>Less</span>
-              <i className="level-0" />
-              <i className="level-1" />
-              <i className="level-2" />
-              <i className="level-3" />
-              <i className="level-4" />
-              <span>More</span>
-            </div>
+              </select>
+            </label>
           </div>
+
+          <HistoryGridClient
+            calendar={calendar}
+            activityByDate={activityByDate}
+            selectedDateKey={activeSelectedDate}
+            onSelectDate={setSelectedDate}
+            loading={loading}
+          />
         </article>
 
         <aside className="gf-history-panel gf-history-detail-panel">
@@ -210,12 +188,12 @@ export default function HistoryPage() {
             <div>
               <p className="gf-dash-eyebrow">Selected day</p>
               <h3>
-                {selectedDate ? formatReadableDate(selectedDate) : "Pick a square"}
+                {formatHistoryDateLabel(activeSelectedDate)}
               </h3>
             </div>
 
             <span className="gf-history-pill">
-              {selectedDate
+              {activeSelectedDate
                 ? selectedCommitCount === 0
                   ? "No commits"
                   : `${selectedCommitCount} commits`
@@ -223,30 +201,19 @@ export default function HistoryPage() {
             </span>
           </div>
 
-          {!selectedDate ? (
-            <div className="gf-history-empty-details">
-              <div className="gf-history-empty-icon">
-                <HistoryIcon />
-              </div>
-
-              <h4>Click a square to inspect sync details</h4>
-              <p>
-                Days with activity show repositories, operation type, commit
-                SHAs, commit messages, author, and sync time.
-              </p>
-            </div>
-          ) : selectedDay ? (
+          {selectedDay ? (
             <div className="gf-history-day-details">
               {selectedDay.repositories.map((repo) => (
                 <article
-                  key={`${selectedDay.date}-${repo.repo}-${repo.branch}`}
+                  key={`${selectedDay.date}-${repo.id}`}
                   className="gf-history-repo-card"
                 >
                   <div className="gf-history-repo-head">
                     <div>
                       <h4>{repo.repo}</h4>
                       <p>
-                        {repo.branch} · {repo.direction}
+                        {repo.branch} · {repo.direction} · {repo.device} ·{" "}
+                        {formatTime(repo.syncedAt)} · {formatBytes(repo.bundleSizeBytes)}
                       </p>
                     </div>
 
@@ -254,18 +221,30 @@ export default function HistoryPage() {
                   </div>
 
                   <div className="gf-history-commit-list">
-                    {repo.commits.map((commit) => (
-                      <div key={commit.sha} className="gf-history-commit-row">
-                        <code>{commit.sha}</code>
+                    {repo.commits.length > 0 ? (
+                      repo.commits.map((commit) => (
+                        <div key={commit.sha} className="gf-history-commit-row">
+                          <code>{commit.sha}</code>
 
+                          <div>
+                            <strong>{commit.message}</strong>
+                            <p>
+                              {commit.author ?? "Unknown author"} · {commit.time}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="gf-history-commit-row">
+                        <code>{repo.commitCount}</code>
                         <div>
-                          <strong>{commit.message}</strong>
-                          <p>
-                            {commit.author} · {commit.time}
-                          </p>
+                          <strong>
+                            {repo.commitCount} commit{repo.commitCount === 1 ? "" : "s"} synced
+                          </strong>
+                          <p>Commit-level metadata was not recorded for this older sync.</p>
                         </div>
                       </div>
-                    ))}
+                    )}
                   </div>
                 </article>
               ))}
@@ -278,7 +257,7 @@ export default function HistoryPage() {
 
               <h4>No commits synced on this day</h4>
               <p>
-                {formatReadableDate(selectedDate)} has no relay-side sync
+                {formatHistoryDateLabel(activeSelectedDate)} has no relay-side sync
                 activity yet. Pick a highlighted square to inspect synced
                 repositories and commit details.
               </p>
@@ -323,61 +302,6 @@ function HistoryIcon() {
   );
 }
 
-function buildGraphDays(historyByDate: Map<string, SyncDay>): GraphDay[] {
-  const today = startOfDay(new Date());
-  const end = startOfWeek(today);
-  const start = addDays(end, -7 * 52 + 1);
-
-  const days: GraphDay[] = [];
-
-  for (let index = 0; index < 7 * 52; index += 1) {
-    const date = addDays(start, index);
-    const dateKey = formatDateKey(date);
-    const dayData = historyByDate.get(dateKey);
-    const count = dayData ? countCommits(dayData) : 0;
-
-    days.push({
-      date: dateKey,
-      label: formatReadableDate(dateKey),
-      count,
-      level: getActivityLevel(count),
-      data: dayData,
-    });
-  }
-
-  return days;
-}
-
-function buildMonthMarkers(days: GraphDay[]) {
-  const markers: { label: string; column: number }[] = [];
-  let lastMonth = "";
-
-  days.forEach((day, index) => {
-    const date = parseDateKey(day.date);
-    const month = monthLabels[date.getMonth()];
-    const column = Math.floor(index / 7) + 1;
-
-    if (date.getDate() <= 7 && month !== lastMonth) {
-      markers.push({
-        label: month,
-        column,
-      });
-
-      lastMonth = month;
-    }
-  });
-
-  return markers;
-}
-
-function getActivityLevel(count: number) {
-  if (count === 0) return 0;
-  if (count === 1) return 1;
-  if (count <= 3) return 2;
-  if (count <= 5) return 3;
-  return 4;
-}
-
 function countCommits(day: SyncDay) {
   return day.repositories.reduce(
     (total, repo) => total + repo.commitCount,
@@ -385,76 +309,55 @@ function countCommits(day: SyncDay) {
   );
 }
 
-function startOfDay(date: Date) {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
-
-function startOfWeek(date: Date) {
-  const next = startOfDay(date);
-  const day = next.getDay();
-  const diff = day === 0 ? 6 : day - 1;
-  next.setDate(next.getDate() - diff);
-  return next;
-}
-
-function addDays(date: Date, amount: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + amount);
-  return next;
-}
-
-function formatDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function parseDateKey(dateKey: string) {
-  const [year, month, day] = dateKey.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function formatReadableDate(dateKey: string) {
-  return parseDateKey(dateKey).toLocaleDateString("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 function buildSyncHistory(events: DashboardData["history"]) {
   const days = new Map<string, SyncDay>();
 
   events.forEach((event) => {
-    const date = formatDateKey(new Date(event.createdAt));
+    const date = toLocalDateKey(new Date(event.createdAt));
     const day = days.get(date) ?? { date, repositories: [] };
 
     day.repositories.push({
+      id: event.id,
       repo: event.repositoryName,
       branch: event.relayEntryId,
+      device: event.deviceName,
+      syncedAt: event.createdAt,
+      bundleSizeBytes: event.bundleSizeBytes,
       direction: event.eventType,
       commitCount: event.commitCount,
-      commits: [
-        {
-          sha: event.id.slice(0, 7),
-          message: `${event.eventType} recorded ${event.commitCount} commit${
-            event.commitCount === 1 ? "" : "s"
-          }`,
-          author: event.deviceName,
-          time: new Date(event.createdAt).toLocaleTimeString("en", {
-            hour: "numeric",
-            minute: "2-digit",
-          }),
-        },
-      ],
+      commits: event.commits.map((commit) => ({
+        sha: shortSHA(commit.sha),
+        message: commit.message,
+        author: commit.authorName,
+        time: formatTime(commit.committedAt ?? commit.authoredAt ?? event.createdAt),
+      })),
     });
 
     days.set(date, day);
   });
 
   return Array.from(days.values());
+}
+
+function shortSHA(sha: string) {
+  return sha.length > 7 ? sha.slice(0, 7) : sha;
+}
+
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString("en", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatBytes(bytes: number) {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  return `${value >= 10 || index === 0 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
 }

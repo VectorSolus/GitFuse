@@ -12,7 +12,7 @@ export async function POST(request: Request) {
 
   if (body?.tier !== "pro" && body?.tier !== "team") {
     return NextResponse.json(
-      { error: "tier must be pro or team" },
+      { error: "Invalid upgrade plan." },
       { status: 400 },
     );
   }

@@ -18,6 +18,8 @@ type UsageMetric = {
   label: string;
   value: number;
   limit: number;
+  displayValue?: string;
+  displayLimit?: string;
   unit: string;
   helper: string;
   detail: string;
@@ -64,6 +66,7 @@ export default function UsagePage() {
         <div className="gf-usage-metrics-grid">
           {usageMetrics.map((metric) => {
             const percent = getPercent(metric.value, metric.limit);
+            const percentLabel = formatPercent(percent);
 
             return (
               <button
@@ -83,19 +86,19 @@ export default function UsagePage() {
                   <div>
                     <p>{metric.label}</p>
                     <strong>
-                      {metric.value}
-                      <small>/{metric.limit}</small>
+                      {metric.displayValue ?? metric.value}
+                      <small>/{metric.displayLimit ?? metric.limit}</small>
                     </strong>
                   </div>
 
-                  <span>{percent}%</span>
+                  <span>{percentLabel}</span>
                 </div>
 
                 <div
                   className="gf-usage-progress"
                   aria-label={`${metric.label} usage ${percent}%`}
                 >
-                  <i style={{ width: `${percent}%` }} />
+                  <i style={{ width: `${clampPercent(percent)}%` }} />
                 </div>
 
                 <div className="gf-usage-metric-foot">
@@ -115,8 +118,9 @@ export default function UsagePage() {
             </div>
 
             <span>
-              {getPercent(selectedMetric?.value ?? 0, selectedMetric?.limit ?? 1)}
-              %
+              {formatPercent(
+                getPercent(selectedMetric?.value ?? 0, selectedMetric?.limit ?? 1),
+              )}
             </span>
           </div>
 
@@ -127,8 +131,10 @@ export default function UsagePage() {
               >
                 <div>
                   <strong>
-                    {selectedMetric.value}
-                    <small>/{selectedMetric.limit}</small>
+                    {selectedMetric.displayValue ?? selectedMetric.value}
+                    <small>
+                      /{selectedMetric.displayLimit ?? selectedMetric.limit}
+                    </small>
                   </strong>
                   <p>{selectedMetric.unit}</p>
                 </div>
@@ -292,7 +298,18 @@ function BillingModal({ onClose }: { onClose: () => void }) {
 
 function getPercent(value: number, limit: number) {
   if (limit <= 0) return 0;
-  return Math.min(100, Math.round((value / limit) * 100));
+  return Math.min(100, Math.max(0, (value / limit) * 100));
+}
+
+function clampPercent(value: number) {
+  return Math.min(100, Math.max(0, value));
+}
+
+function formatPercent(value: number) {
+  if (value === 0) return "0%";
+  if (value < 0.01) return "<0.01%";
+  if (value < 1) return `${value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}%`;
+  return `${Math.round(value)}%`;
 }
 
 function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
@@ -303,9 +320,12 @@ function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
   const repoLimit = usage?.repos.max === "unlimited" ? Math.max(usage.repos.current, 1) : usage?.repos.max ?? 5;
   const deviceLimit =
     usage?.devices.max === "unlimited" ? Math.max(usage.devices.current, 1) : usage?.devices.max ?? 3;
-  const storageLimitMb = bytesToMb(usage?.storage.maxBytes ?? 500 * 1024 * 1024);
-  const storageCurrentMb = bytesToMb(usage?.storage.currentBytes ?? 0);
-  const bundleLimitMb = bytesToMb(usage?.bundleSize.maxBytes ?? 50 * 1024 * 1024);
+  const storageLimitBytes = usage?.storage.maxBytes ?? 500 * 1024 * 1024;
+  const storageCurrentBytes = usage?.storage.currentBytes ?? 0;
+  const bundleLimitBytes = usage?.bundleSize.maxBytes ?? 50 * 1024 * 1024;
+  const largestBundleBytes = usage?.bundleSize.largestRecentBundleBytes ?? 0;
+  const historyUsedDays = usage?.historyRetention?.usedDays ?? distinctHistoryDays(history);
+  const historyLimitDays = usage?.historyRetention?.maxDays ?? usage?.historyDays ?? 30;
 
   return [
     {
@@ -347,9 +367,11 @@ function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
     {
       id: "storage",
       label: "Storage",
-      value: storageCurrentMb,
-      limit: storageLimitMb,
-      unit: "MB",
+      value: storageCurrentBytes,
+      limit: storageLimitBytes,
+      displayValue: formatBytes(storageCurrentBytes),
+      displayLimit: formatBytes(storageLimitBytes),
+      unit: "relay bytes",
       helper: "private relay storage",
       detail:
         "Storage is used by encrypted commit bundles waiting in the private relay. Cleaning old bundles or upgrading the plan can increase available space later.",
@@ -367,12 +389,12 @@ function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
     {
       id: "history",
       label: "History retention",
-      value: usage?.historyDays ?? 30,
-      limit: usage?.historyDays ?? 30,
+      value: historyUsedDays,
+      limit: historyLimitDays,
       unit: "days",
-      helper: "history kept on current tier",
+      helper: "activity days retained",
       detail:
-        "History retention controls how long sync events remain visible in the dashboard. Current plan limits come from the workspace billing tier.",
+        "History retention shows actual calendar days with retained sync activity against the current plan window.",
       tone: "amber",
       rowsTitle: "History coverage",
       emptyText: "No sync history is available yet.",
@@ -385,39 +407,37 @@ function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
     {
       id: "bundle",
       label: "Bundle size limit",
-      value: bundleLimitMb,
-      limit: bundleLimitMb,
-      unit: "MB",
-      helper: "maximum per sync",
+      value: largestBundleBytes,
+      limit: bundleLimitBytes,
+      displayValue: formatBytes(largestBundleBytes),
+      displayLimit: formatBytes(bundleLimitBytes),
+      unit: "largest sync",
+      helper: "actual largest recent bundle",
       detail:
-        "Bundle size is the maximum encrypted payload GitFuse can move in a single sync operation. Larger bundles can be enabled later through billing.",
+        "Bundle size compares the largest actual encrypted sync payload with the current plan's per-sync allowance.",
       tone: "blue",
       rowsTitle: "Recent bundle sizes",
       emptyText: "No bundles have been created yet.",
-      rows: repos
-        .filter((repo) => repo.activeBundleCount > 0)
-        .map((repo) => ({
-          name: repo.displayName,
-          meta: `${repo.activeBundleCount} active bundles`,
-          value: formatBytes(repo.activeStorageBytes),
+      rows: (usage?.recentBundles ?? [])
+        .map((bundle) => ({
+          name: bundle.repositoryName,
+          meta: `${bundle.deviceName ?? "Unknown device"} · ${formatDate(bundle.syncedAt)}`,
+          value: formatBytes(bundle.sizeBytes),
         })),
     },
   ];
 }
 
-function buildPlanFeatures(data: DashboardData | null) {
-  const usage = data?.usage;
-  return [
-    `${formatLimit(usage?.repos.max ?? 5)} tracked repositories`,
-    `${formatLimit(usage?.devices.max ?? 3)} trusted devices`,
-    `${formatBytes(usage?.storage.maxBytes ?? 500 * 1024 * 1024)} relay storage`,
-    `${usage?.historyDays ?? 30} days sync history`,
-    `${formatBytes(usage?.bundleSize.maxBytes ?? 50 * 1024 * 1024)} bundle size`,
-  ];
+function distinctHistoryDays(history: DashboardData["history"]) {
+  return new Set(history.map((event) => formatDateKey(new Date(event.createdAt)))).size;
 }
 
-function bytesToMb(bytes: number) {
-  return Math.round(bytes / (1024 * 1024));
+function formatDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function formatBytes(bytes: number) {
@@ -448,4 +468,15 @@ function formatDate(value: string) {
 
 function titleCase(value: string) {
   return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
+
+function buildPlanFeatures(data: DashboardData | null) {
+  const usage = data?.usage;
+  return [
+    `${formatLimit(usage?.repos.max ?? 5)} tracked repositories`,
+    `${formatLimit(usage?.devices.max ?? 3)} trusted devices`,
+    `${formatBytes(usage?.storage.maxBytes ?? 500 * 1024 * 1024)} relay storage`,
+    `${usage?.historyDays ?? 30} days sync history`,
+    `${formatBytes(usage?.bundleSize.maxBytes ?? 50 * 1024 * 1024)} bundle size`,
+  ];
 }

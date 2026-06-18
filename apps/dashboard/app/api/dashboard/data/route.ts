@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  availableHistoryYears,
+  resolvePermittedHistoryYear,
+} from "@gitfuse/types/billing";
 
 import { findDashboardAccountForSession } from "../../../../lib/account";
 import { auth } from "../../../../lib/auth";
@@ -10,7 +14,7 @@ import { getDashboardUsage } from "../../../../lib/usage";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await auth().catch(() => null);
 
   if (!session?.user) {
@@ -46,17 +50,45 @@ export async function GET() {
   }
 
   const account = {
+    id: databaseUser.id,
     email: databaseUser.email,
     username: databaseUser.github_username,
   };
 
   try {
-    const [repositories, devices, history, usage, billing] = await Promise.all([
+    const billing = await getDashboardBilling(account);
+    const currentYear = new Date().getFullYear();
+    const requestedYearValue = Number(
+      new URL(request.url).searchParams.get("year"),
+    );
+    const requestedYear = Number.isInteger(requestedYearValue)
+      ? requestedYearValue
+      : null;
+    const requestedTimezoneOffset = Number(
+      new URL(request.url).searchParams.get("tzOffset"),
+    );
+    const timezoneOffsetMinutes = Number.isFinite(requestedTimezoneOffset)
+      ? Math.max(-840, Math.min(840, requestedTimezoneOffset))
+      : 0;
+    const selectedYear = resolvePermittedHistoryYear(
+      billing.tier,
+      requestedYear,
+      currentYear,
+    );
+    const historyYears = availableHistoryYears(
+      billing.tier,
+      currentYear,
+    );
+
+    const [repositories, devices, history, usage] = await Promise.all([
       listDashboardRepositories(account),
       listDashboardDevices(account),
-      listDashboardSyncHistory(account, { limit: 200 }),
+      listDashboardSyncHistory(account, {
+        limit: 5000,
+        year: selectedYear,
+        timezoneOffsetMinutes,
+      }),
       getDashboardUsage(account),
-      getDashboardBilling(account),
     ]);
 
     return NextResponse.json({
@@ -69,6 +101,8 @@ export async function GET() {
       history,
       usage,
       billing,
+      historyYears,
+      selectedHistoryYear: selectedYear,
     });
   } catch (error) {
     return NextResponse.json(

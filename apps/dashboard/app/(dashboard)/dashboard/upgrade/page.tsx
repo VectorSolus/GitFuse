@@ -191,7 +191,7 @@ export default function UpgradePage() {
 
       await loadRazorpayCheckout();
       if (!window.Razorpay) {
-        throw new Error("Razorpay Checkout did not load.");
+        throw new Error("Razorpay Checkout loaded, but window.Razorpay is unavailable.");
       }
 
       const checkout = new window.Razorpay({
@@ -229,8 +229,12 @@ export default function UpgradePage() {
         },
       });
       checkout.open();
-    } catch {
-      setCheckoutMessage("Razorpay checkout is unavailable right now.");
+    } catch (error) {
+      setCheckoutMessage(
+        error instanceof Error
+          ? error.message
+          : "Razorpay checkout is unavailable right now.",
+      );
       setCheckoutOpen(true);
       setCheckoutPendingTier(null);
     }
@@ -427,7 +431,10 @@ async function loadRazorpayCheckout() {
       });
       existingScript.addEventListener(
         "error",
-        () => reject(new Error("Razorpay Checkout failed to load.")),
+        () =>
+          reject(
+            new Error("Could not load Razorpay Checkout. Please try again."),
+          ),
         { once: true },
       );
       existingScript.addEventListener(
@@ -450,7 +457,7 @@ async function loadRazorpayCheckout() {
     script.async = true;
     script.onload = () => resolve();
     script.onerror = () =>
-      reject(new Error("Razorpay Checkout failed to load."));
+      reject(new Error("Could not load Razorpay Checkout. Please try again."));
     document.head.appendChild(script);
   });
 }
