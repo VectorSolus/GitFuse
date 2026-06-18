@@ -241,7 +241,7 @@ export default function HistoryPage() {
                           <strong>
                             {repo.commitCount} commit{repo.commitCount === 1 ? "" : "s"} synced
                           </strong>
-                          <p>Commit-level metadata was not recorded for this older sync.</p>
+                          <p>Commit details were not recorded for this older sync.</p>
                         </div>
                       </div>
                     )}

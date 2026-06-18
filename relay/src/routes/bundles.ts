@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
+import type { SyncedCommit } from "@gitfuse/types/relay";
 import type { AuthenticatedDevice } from "../db/queries";
 import {
   checkBundleUploadLimits,
-  createBundle,
+  createBundleAndSyncEvent,
   findBundle,
   findRepoByRelayEntry,
   getUsage,
   listBundles,
-  recordSyncEvent,
   updateBundleStatus
 } from "../db/queries";
 import { deleteBundleObject, getBundleObject, putBundleObject } from "../storage/r2";
@@ -43,6 +43,7 @@ bundleRoutes.post("/upload", async (c) => {
   const commitCount = Number(form.get("commitCount") ?? 0);
   const sizeBytes = Number(form.get("sizeBytes") ?? 0);
   const parentBundleId = form.get("parentBundleId") ? String(form.get("parentBundleId")) : null;
+  const commits = parseSyncedCommits(String(form.get("commits") ?? "[]"));
   const file = form.get("bundle");
 
   if (!relayEntryId || !bundleHash || !commitCount || !sizeBytes || !(file instanceof File)) {
@@ -63,7 +64,7 @@ bundleRoutes.post("/upload", async (c) => {
     const expiresAt = new Date(
       Date.now() + usage.historyDays * 24 * 60 * 60 * 1000
     ).toISOString();
-    const bundle = await createBundle({
+    const { bundle } = await createBundleAndSyncEvent({
       repositoryId: repository.id,
       deviceId: auth.deviceId,
       bundleHash,
@@ -71,14 +72,8 @@ bundleRoutes.post("/upload", async (c) => {
       sizeBytes,
       r2Key,
       parentBundleId,
-      expiresAt
-    });
-    await recordSyncEvent({
-      repositoryId: repository.id,
-      deviceId: auth.deviceId,
-      eventType: "sync",
-      commitCount,
-      bundleSizeBytes: sizeBytes
+      expiresAt,
+      commits
     });
 
     return { missing: false as const, bundle };
@@ -121,3 +116,29 @@ bundleRoutes.delete("/:bundleId", async (c) => {
   await deleteBundleObject(bundle.r2Key);
   return c.json({ deleted: true });
 });
+
+function parseSyncedCommits(raw: string): SyncedCommit[] {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const commit = item as Partial<SyncedCommit>;
+        if (typeof commit.sha !== "string" || typeof commit.message !== "string") {
+          return null;
+        }
+        return {
+          sha: commit.sha,
+          message: commit.message,
+          authorName: commit.authorName ?? null,
+          authorEmail: commit.authorEmail ?? null,
+          authoredAt: commit.authoredAt ?? null,
+          committedAt: commit.committedAt ?? null
+        } satisfies SyncedCommit;
+      })
+      .filter((commit): commit is SyncedCommit => Boolean(commit));
+  } catch {
+    return [];
+  }
+}

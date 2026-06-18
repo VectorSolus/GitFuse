@@ -74,6 +74,16 @@ export type UploadBundleMetadata = {
   commitCount: number;
   sizeBytes: number;
   parentBundleId?: string | null;
+  commits?: SyncedCommit[];
+};
+
+export type SyncedCommit = {
+  sha: string;
+  message: string;
+  authorName: string | null;
+  authorEmail: string | null;
+  authoredAt: string | null;
+  committedAt: string | null;
 };
 
 export type UploadBundleResponse = {

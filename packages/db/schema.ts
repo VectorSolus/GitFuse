@@ -130,8 +130,9 @@ export const syncEventCommits = pgTable(
   },
   (table) => ({
     syncEventIdx: index("sync_event_commits_sync_event_id_idx").on(table.syncEventId),
+    repositoryIdx: index("sync_event_commits_repository_id_idx").on(table.repositoryId),
     repositoryCommittedIdx: index("sync_event_commits_repository_committed_idx").on(table.repositoryId, table.committedAt),
-    repositoryShaUnique: unique("sync_event_commits_repository_sha_unique").on(table.repositoryId, table.sha)
+    syncEventShaUnique: unique("sync_event_commits_sync_event_sha_unique").on(table.syncEventId, table.sha)
   })
 );
 

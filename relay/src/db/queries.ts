@@ -1,5 +1,8 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type {
+  SyncedCommit,
+} from "@gitfuse/types/relay";
+import type {
   Bundle,
   BundleStatus,
   Device,
@@ -160,6 +163,10 @@ function mapDevice(row: {
     createdAt: toIso(row.created_at) ?? "",
     revokedAt: toIso(row.revoked_at)
   };
+}
+
+function nullableTimestamp(value: string | null | undefined) {
+  return value && value.trim() ? value : null;
 }
 
 export type LimitCheck = { ok: true } | { ok: false; limit: LimitName; current: number; max: number };
@@ -738,6 +745,132 @@ export async function recordSyncEvent(input: {
   const repo = repositories.get(input.repositoryId);
   if (repo) repo.lastSyncedAt = event.createdAt;
   return event;
+}
+
+export async function createBundleAndSyncEvent(input: {
+  repositoryId: string;
+  deviceId: string;
+  bundleHash: string;
+  commitCount: number;
+  sizeBytes: number;
+  r2Key: string;
+  parentBundleId?: string | null;
+  expiresAt: string;
+  commits: SyncedCommit[];
+}) {
+  const sql = getRelaySql();
+  if (!sql) {
+    const bundle = await createBundle(input);
+    const event = await recordSyncEvent({
+      repositoryId: input.repositoryId,
+      deviceId: input.deviceId,
+      eventType: "sync",
+      commitCount: input.commitCount,
+      bundleSizeBytes: input.sizeBytes
+    });
+    return { bundle, event };
+  }
+
+  return sql.begin(async (tx) => {
+    const [bundleRow] = await tx<Parameters<typeof mapBundle>[0][]>`
+      insert into bundles (
+        repository_id,
+        device_id,
+        bundle_hash,
+        commit_count,
+        size_bytes,
+        r2_key,
+        status,
+        parent_bundle_id,
+        expires_at
+      )
+      values (
+        ${input.repositoryId},
+        ${input.deviceId},
+        ${input.bundleHash},
+        ${input.commitCount},
+        ${input.sizeBytes},
+        ${input.r2Key},
+        'active',
+        ${input.parentBundleId ?? null},
+        ${input.expiresAt}
+      )
+      returning id, repository_id, device_id, bundle_hash, commit_count, size_bytes, r2_key, status, parent_bundle_id, created_at, expires_at
+    `;
+
+    const [eventRow] = await tx<{
+      id: string;
+      repository_id: string;
+      device_id: string;
+      event_type: SyncEventType;
+      commit_count: number;
+      bundle_size_bytes: number | string;
+      created_at: Date | string;
+    }[]>`
+      insert into sync_events (
+        repository_id,
+        device_id,
+        event_type,
+        commit_count,
+        bundle_size_bytes
+      )
+      values (
+        ${input.repositoryId},
+        ${input.deviceId},
+        'sync',
+        ${input.commitCount},
+        ${input.sizeBytes}
+      )
+      returning id, repository_id, device_id, event_type, commit_count, bundle_size_bytes, created_at
+    `;
+
+    if (input.commits.length > 0) {
+      for (const commit of input.commits) {
+        await tx`
+          insert into sync_event_commits (
+            sync_event_id,
+            repository_id,
+            sha,
+            message,
+            author_name,
+            author_email,
+            authored_at,
+            committed_at
+          )
+          values (
+            ${eventRow.id},
+            ${input.repositoryId},
+            ${commit.sha},
+            ${commit.message},
+            ${commit.authorName},
+            ${commit.authorEmail},
+            ${nullableTimestamp(commit.authoredAt)},
+            ${nullableTimestamp(commit.committedAt)}
+          )
+          on conflict (sync_event_id, sha) do nothing
+        `;
+      }
+    }
+
+    await tx`
+      update repositories
+      set last_synced_at = ${toIso(eventRow.created_at)}
+      where id = ${input.repositoryId}
+    `;
+
+    return {
+      bundle: mapBundle(bundleRow),
+      event: {
+        id: eventRow.id,
+        repositoryId: eventRow.repository_id,
+        deviceId: eventRow.device_id,
+        eventType: eventRow.event_type,
+        commitCount: Number(eventRow.commit_count),
+        bundleSizeBytes: Number(eventRow.bundle_size_bytes),
+        createdAt: toIso(eventRow.created_at) ?? ""
+      }
+    };
+  });
 }
 
 export async function listDevices(userId: string) {

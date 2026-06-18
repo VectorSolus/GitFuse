@@ -105,13 +105,11 @@ export async function GET(request: Request) {
       selectedHistoryYear: selectedYear,
     });
   } catch (error) {
+    console.error("[api:dashboard:data]", error);
     return NextResponse.json(
       {
         error: "DASHBOARD_DATA_UNAVAILABLE",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Dashboard data is unavailable.",
+        message: "Could not load dashboard data.",
       },
       { status: 500 },
     );
