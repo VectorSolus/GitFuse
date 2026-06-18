@@ -114,6 +114,27 @@ export const syncEvents = pgTable(
   })
 );
 
+export const syncEventCommits = pgTable(
+  "sync_event_commits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    syncEventId: uuid("sync_event_id").notNull().references(() => syncEvents.id, { onDelete: "cascade" }),
+    repositoryId: uuid("repository_id").notNull().references(() => repositories.id, { onDelete: "cascade" }),
+    sha: text("sha").notNull(),
+    message: text("message").notNull(),
+    authorName: text("author_name"),
+    authorEmail: text("author_email"),
+    authoredAt: timestamp("authored_at", { withTimezone: true }),
+    committedAt: timestamp("committed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    syncEventIdx: index("sync_event_commits_sync_event_id_idx").on(table.syncEventId),
+    repositoryCommittedIdx: index("sync_event_commits_repository_committed_idx").on(table.repositoryId, table.committedAt),
+    repositoryShaUnique: unique("sync_event_commits_repository_sha_unique").on(table.repositoryId, table.sha)
+  })
+);
+
 export const bundles = pgTable(
   "bundles",
   {
