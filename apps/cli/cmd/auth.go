@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -39,6 +40,39 @@ func init() {
 }
 
 func runAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) error {
+	if !opts.headless {
+		reader := bufio.NewReader(cmd.InOrStdin())
+		existing, err := promptLine(cmd, reader, "Do you already have a gitfuse account? (Y/N) ")
+		if err != nil {
+			return err
+		}
+		switch strings.ToLower(strings.TrimSpace(existing)) {
+		case "n", "no":
+			fmt.Fprintln(cmd.OutOrStdout(), "Create your gitfuse account at https://gitfuse.dev/signup, then run gitfuse auth again.")
+			return nil
+		case "y", "yes":
+		default:
+			return fmt.Errorf("enter Y or N")
+		}
+
+		method, err := promptLine(cmd, reader, "Sign in method (Email/GitHub/Google): ")
+		if err != nil {
+			return err
+		}
+		switch strings.ToLower(strings.TrimSpace(method)) {
+		case "email":
+			return fmt.Errorf("email/password CLI auth is not available because the relay has no existing credentials token route; use GitHub or Google OAuth for this version")
+		case "github", "google":
+			return runOAuthAuth(ctx, cmd, opts)
+		default:
+			return fmt.Errorf("choose Email, GitHub, or Google")
+		}
+	}
+
+	return runOAuthAuth(ctx, cmd, opts)
+}
+
+func runOAuthAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) error {
 	code := opts.code
 	var err error
 	if code == "" {
@@ -116,6 +150,15 @@ func runAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) error {
 		case <-time.After(pollInterval):
 		}
 	}
+}
+
+func promptLine(cmd *cobra.Command, reader *bufio.Reader, prompt string) (string, error) {
+	fmt.Fprint(cmd.OutOrStdout(), prompt)
+	value, err := reader.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(value), nil
 }
 
 type pollResponse struct {
