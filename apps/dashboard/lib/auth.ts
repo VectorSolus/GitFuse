@@ -7,11 +7,13 @@ import {
   findDashboardAccountByEmail,
   findDashboardAccountById,
   findDashboardAccountByProviderIdentity,
+  markDashboardAccountEmailVerified,
   setDashboardAccountPassword,
   upsertDashboardAccount,
   type AuthProvider,
   type DashboardAccount,
 } from "./account";
+import { oauthPostLoginRedirect } from "./auth-oauth";
 import { normalizeEmail, verifyOtpChallenge } from "./otp";
 import {
   hashPassword,
@@ -120,10 +122,11 @@ const providers = [
             await hashPassword(password),
           );
 
-          if (!user) return null;
+        if (!user) return null;
         }
 
-        return authUser(existingUser);
+        const verifiedUser = await markDashboardAccountEmailVerified(existingUser.id);
+        return authUser(verifiedUser ?? existingUser);
       }
 
       if (!isValidPassword(password)) return null;
@@ -133,6 +136,7 @@ const providers = [
         providerAccountId: email,
         username: email.split("@")[0],
         email,
+        emailVerifiedAt: new Date().toISOString(),
         passwordHash: await hashPassword(password),
       });
 
@@ -197,13 +201,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return false;
       }
 
+      const existingUser =
+        (await findDashboardAccountByProviderIdentity(
+          provider,
+          providerAccountId,
+        )) ?? (await findDashboardAccountByEmail(email));
+      const redirectTo = oauthPostLoginRedirect(existingUser);
+
       await upsertDashboardAccount({
         provider,
         providerAccountId,
         username,
         email,
       });
-      return true;
+      return redirectTo === "/dashboard" ? true : redirectTo;
     },
 
     async jwt({ token, user, account }) {

@@ -7,6 +7,7 @@ export type DashboardAccount = {
   github_id: string;
   github_username: string;
   email: string;
+  email_verified_at: string | Date | null;
   password_hash: string | null;
 };
 
@@ -17,6 +18,7 @@ type DashboardAccountInput = {
   providerAccountId?: string;
   username?: string;
   email: string;
+  emailVerifiedAt?: string | null;
   passwordHash?: string | null;
 };
 
@@ -75,7 +77,7 @@ export async function upsertDashboardAccount(input: DashboardAccountInput) {
 
   const sql = getSql();
   const [existingUser] = await sql<DashboardAccount[]>`
-    select id, github_id, github_username, email, password_hash
+    select id, github_id, github_username, email, email_verified_at, password_hash
     from users
     where github_id = ${storedAccountId}
        or lower(email) = lower(${email})
@@ -92,27 +94,30 @@ export async function upsertDashboardAccount(input: DashboardAccountInput) {
       set github_id = ${storedAccountId},
           github_username = ${username},
           email = ${email},
+          email_verified_at = coalesce(${input.emailVerifiedAt ?? null}, email_verified_at),
           password_hash = coalesce(${input.passwordHash ?? null}, password_hash),
           updated_at = now()
       where id = ${existingUser.id}
-      returning id, github_id, github_username, email, password_hash
+      returning id, github_id, github_username, email, email_verified_at, password_hash
     `;
   } else {
     [user] = await sql<DashboardAccount[]>`
-      insert into users (github_id, github_username, email, password_hash)
+      insert into users (github_id, github_username, email, email_verified_at, password_hash)
       values (
         ${storedAccountId},
         ${username},
         ${email},
+        ${input.emailVerifiedAt ?? null},
         ${input.passwordHash ?? null}
       )
       on conflict (github_id)
       do update set
         github_username = excluded.github_username,
         email = excluded.email,
+        email_verified_at = coalesce(excluded.email_verified_at, users.email_verified_at),
         password_hash = coalesce(excluded.password_hash, users.password_hash),
         updated_at = now()
-      returning id, github_id, github_username, email, password_hash
+      returning id, github_id, github_username, email, email_verified_at, password_hash
     `;
   }
 
@@ -134,7 +139,7 @@ export async function upsertDashboardAccount(input: DashboardAccountInput) {
 export async function findDashboardAccountById(userId: string) {
   const sql = getSql();
   const [user] = await sql<DashboardAccount[]>`
-    select id, github_id, github_username, email, password_hash
+    select id, github_id, github_username, email, email_verified_at, password_hash
     from users
     where id = ${userId}
     limit 1
@@ -147,7 +152,7 @@ export async function findDashboardAccountByEmail(email: string) {
   const normalizedEmail = normalizeEmail(email);
   const sql = getSql();
   const [user] = await sql<DashboardAccount[]>`
-    select id, github_id, github_username, email, password_hash
+    select id, github_id, github_username, email, email_verified_at, password_hash
     from users
     where lower(email) = lower(${normalizedEmail})
     order by updated_at desc
@@ -168,7 +173,7 @@ export async function findDashboardAccountByProviderIdentity(
   const legacyAccountId = rawProviderAccountId(provider, providerAccountId);
   const sql = getSql();
   const [user] = await sql<DashboardAccount[]>`
-    select id, github_id, github_username, email, password_hash
+    select id, github_id, github_username, email, email_verified_at, password_hash
     from users
     where github_id = ${storedAccountId}
        or (${provider} = 'github' and github_id = ${legacyAccountId})
@@ -204,7 +209,20 @@ export async function setDashboardAccountPassword(
     set password_hash = ${passwordHash},
         updated_at = now()
     where id = ${userId}
-    returning id, github_id, github_username, email, password_hash
+    returning id, github_id, github_username, email, email_verified_at, password_hash
+  `;
+
+  return user ?? null;
+}
+
+export async function markDashboardAccountEmailVerified(userId: string) {
+  const sql = getSql();
+  const [user] = await sql<DashboardAccount[]>`
+    update users
+    set email_verified_at = coalesce(email_verified_at, now()),
+        updated_at = now()
+    where id = ${userId}
+    returning id, github_id, github_username, email, email_verified_at, password_hash
   `;
 
   return user ?? null;
