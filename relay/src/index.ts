@@ -10,6 +10,7 @@ import {
   seedLimitScenario
 } from "./db/queries";
 import { sessionExpired } from "./errors/responses";
+import { accountRoutes } from "./routes/account";
 import { authRoutes } from "./routes/auth";
 import { bundleRoutes } from "./routes/bundles";
 import { deviceRoutes } from "./routes/devices";
@@ -45,6 +46,7 @@ app.post("/__test/cleanup/seed", async (c) => {
   await putBundleObject(seeded.expiredKey, new TextEncoder().encode("expired"));
   await putBundleObject(seeded.activeKey, new TextEncoder().encode("active"));
   await putBundleObject(seeded.droppedKey, new TextEncoder().encode("dropped"));
+  await putBundleObject(seeded.paidOldKey, new TextEncoder().encode("paid-old"));
   return c.json(seeded);
 });
 
@@ -58,7 +60,7 @@ app.post("/v1/admin/cleanup/expired-bundles", async (c) => {
   if (secret && c.req.header("authorization") !== `Bearer ${secret}`) {
     return c.json({ error: "UNAUTHORIZED", message: "Cleanup job is not authorized." }, 401);
   }
-  return c.json(await cleanupExpiredBundles());
+  return c.json(await cleanupExpiredBundles({ dryRun: c.req.query("dryRun") === "1" }));
 });
 
 app.route("/v1/auth", authRoutes);
@@ -80,6 +82,7 @@ app.use("/v1/*", async (c, next) => {
 app.route("/v1/repos", repoRoutes);
 app.route("/v1/bundles", bundleRoutes);
 app.route("/v1/devices", deviceRoutes);
+app.route("/v1/account", accountRoutes);
 app.get("/v1/usage", async (c) => {
   const auth = c.get("auth");
   return c.json(await getUsage(auth.userId));

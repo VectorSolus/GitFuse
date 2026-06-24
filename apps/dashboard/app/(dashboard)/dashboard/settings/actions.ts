@@ -104,6 +104,7 @@ export async function verifyEmailOtp(
     await sql`
       update users
       set email = ${normalizedEmail},
+          email_verified_at = now(),
           updated_at = now()
       where id = ${user.id}
     `;

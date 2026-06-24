@@ -1002,7 +1002,9 @@ function buildBillingLimits(data: DashboardData | null): BillingLimit[] {
     },
     {
       label: "Devices",
-      value: formatLimit(data?.usage.devices.max ?? 3),
+      value: data?.accountLimits
+        ? `${data.accountLimits.devices.current} / ${formatNullableLimit(data.accountLimits.devices.limit)}`
+        : formatLimit(data?.usage.devices.max ?? 2),
       helper: "trusted machines",
       tone: "green",
     },
@@ -1014,7 +1016,9 @@ function buildBillingLimits(data: DashboardData | null): BillingLimit[] {
     },
     {
       label: "History",
-      value: `${data?.usage.historyDays ?? 30} days`,
+      value: data?.accountLimits
+        ? formatRetentionDays(data.accountLimits.retention_days)
+        : `${data?.usage.historyDays ?? 7} days`,
       helper: "sync history retention",
       tone: "amber",
     },
@@ -1023,6 +1027,14 @@ function buildBillingLimits(data: DashboardData | null): BillingLimit[] {
 
 function formatLimit(value: number | "unlimited") {
   return value === "unlimited" ? "Unlimited" : String(value);
+}
+
+function formatNullableLimit(value: number | null) {
+  return value === null ? "Unlimited" : String(value);
+}
+
+function formatRetentionDays(value: number | null) {
+  return value === null ? "Unlimited" : `${value} days`;
 }
 
 function formatBytes(bytes: number) {

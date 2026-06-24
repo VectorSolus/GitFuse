@@ -6,6 +6,7 @@ import type { DashboardDevice } from "@/lib/devices";
 import type { DashboardSyncEvent } from "@/lib/history";
 import type { DashboardRepository } from "@/lib/repositories";
 import type { DashboardUsage } from "@/lib/usage";
+import type { AccountLimitsResponse } from "@gitfuse/types/billing";
 
 export type DashboardData = {
   user: {
@@ -16,6 +17,7 @@ export type DashboardData = {
   devices: DashboardDevice[];
   history: DashboardSyncEvent[];
   usage: DashboardUsage;
+  accountLimits: AccountLimitsResponse;
   billing: DashboardBilling;
   historyYears: number[];
   selectedHistoryYear: number;
@@ -41,11 +43,18 @@ export function useDashboardData(year?: number) {
           "tzOffset",
           String(new Date().getTimezoneOffset()),
         );
-        const response = await fetch(`/api/dashboard/data?${params.toString()}`, {
-          cache: "no-store",
-        });
+        const [response, limitsResponse] = await Promise.all([
+          fetch(`/api/dashboard/data?${params.toString()}`, {
+            cache: "no-store",
+          }),
+          fetch("/api/account/limits", {
+            cache: "no-store",
+          }),
+        ]);
         if (!response.ok) throw new Error(`Dashboard data failed with status ${response.status}`);
+        if (!limitsResponse.ok) throw new Error(`Account limits failed with status ${limitsResponse.status}`);
         const payload = (await response.json()) as DashboardData;
+        payload.accountLimits = (await limitsResponse.json()) as AccountLimitsResponse;
         if (!cancelled) {
           setData(payload);
           setLoading(false);
