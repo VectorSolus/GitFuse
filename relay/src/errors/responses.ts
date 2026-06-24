@@ -27,6 +27,18 @@ export function overLimit(c: Context, limit: LimitName, current: number, max: nu
   return c.json({ error: "OVER_LIMIT", limit, current, max } satisfies RelayError, 402);
 }
 
+export function deviceLimitReached(c: Context, current: number, limit = 2) {
+  return c.json(
+    {
+      error: "device_limit_reached",
+      tier: "free",
+      limit,
+      current
+    },
+    403
+  );
+}
+
 export function bundleRejected(c: Context, reason: BundleRejectedReason, relayMinVersion: string) {
   return c.json(
     { error: "BUNDLE_REJECTED", reason, relay_min_version: relayMinVersion } satisfies RelayError,

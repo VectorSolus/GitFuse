@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { ApproveAuthRequest, RegisterDeviceRequest } from "@gitfuse/types/relay";
 import { approveAuthSession, authSessionDeviceId, checkDeviceLimitForApproval, createAuthSession, pollAuthSession } from "../db/queries";
-import { badRequest, notFound, overLimit } from "../errors/responses";
+import { badRequest, deviceLimitReached, notFound } from "../errors/responses";
 
 export const authRoutes = new Hono();
 
@@ -22,7 +22,7 @@ authRoutes.post("/approve", async (c) => {
     body.email,
     body.deviceId ?? authSessionDeviceId(body.code)
   );
-  if (!limit.ok) return overLimit(c, limit.limit, limit.current, limit.max);
+  if (!limit.ok) return deviceLimitReached(c, limit.current, limit.max);
 
   const approved = await approveAuthSession(body.code, body.githubUsername, body.email);
   if (!approved) return notFound(c, "CLI auth session not found or expired.");

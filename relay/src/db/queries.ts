@@ -10,7 +10,16 @@ import type {
   SyncEvent,
   SyncEventType
 } from "@gitfuse/types/workspace";
-import { PLAN_LIMITS, type LimitName, type PlanTier, type UsageSummary } from "@gitfuse/types/billing";
+import {
+  PLAN_LIMITS,
+  accountLimitsForTier,
+  accountTierForPlan,
+  type AccountLimitsResponse,
+  type AccountTier,
+  type LimitName,
+  type PlanTier,
+  type UsageSummary
+} from "@gitfuse/types/billing";
 import {
   ensureRelayDatabaseUser,
   findRelayDatabaseUserById,
@@ -30,7 +39,7 @@ type UserRecord = {
   id: string;
   githubUsername: string;
   email: string;
-  tier: PlanTier;
+  tier: AccountTier;
 };
 
 type AuthSession = {
@@ -67,7 +76,25 @@ function hashToken(token: string) {
 
 async function tierForUser(userId: string) {
   const databaseUser = await findRelayDatabaseUserById(userId);
-  return databaseUser?.tier ?? users.get(userId)?.tier ?? "free";
+  const tier = databaseUser?.tier ?? users.get(userId)?.tier ?? "free";
+  return tier === "paid" ? "pro" : tier;
+}
+
+async function accountTierForUser(userId: string): Promise<AccountTier> {
+  const sql = getRelaySql();
+  if (sql) {
+    const [row] = await sql<{ tier: AccountTier | null; plan_tier: PlanTier | null }[]>`
+      select users.tier, plans.tier as plan_tier
+      from users
+      left join plans on plans.user_id = users.id
+      where users.id = ${userId}
+      limit 1
+    `;
+    if (row?.tier) return row.tier;
+    return accountTierForPlan(row?.plan_tier);
+  }
+
+  return users.get(userId)?.tier ?? "free";
 }
 
 function numericLimit(value: number | "unlimited") {
@@ -151,6 +178,9 @@ function mapDevice(row: {
   id: string;
   user_id: string;
   name: string;
+  public_key_fingerprint?: string | null;
+  first_synced_at?: Date | string | null;
+  last_synced_at?: Date | string | null;
   last_active_at: Date | string | null;
   created_at: Date | string;
   revoked_at: Date | string | null;
@@ -159,6 +189,9 @@ function mapDevice(row: {
     id: row.id,
     userId: row.user_id,
     name: row.name,
+    publicKeyFingerprint: row.public_key_fingerprint ?? null,
+    firstSyncedAt: toIso(row.first_synced_at),
+    lastSyncedAt: toIso(row.last_synced_at),
     lastActiveAt: toIso(row.last_active_at),
     createdAt: toIso(row.created_at) ?? "",
     revokedAt: toIso(row.revoked_at)
@@ -204,7 +237,9 @@ export async function checkDeviceLimitForApproval(
       (record) => record.githubUsername === githubUsername
     );
   if (!user) return { ok: true };
-  const max = numericLimit(PLAN_LIMITS[user.tier].devices);
+  const accountTier = accountTierForPlan(user.tier);
+  const max = accountLimitsForTier(accountTier).devices.limit;
+  if (max === null) return { ok: true };
   const sql = getRelaySql();
   if (deviceId) {
     if (sql) {
@@ -240,7 +275,7 @@ export async function checkDeviceLimitForApproval(
         )[0]?.count ?? 0
       )
     : [...devices.values()].filter((device) => device.userId === user.id && device.revokedAt === null).length;
-  if (max !== null && current >= max) return { ok: false, limit: "devices", current: current + 1, max };
+  if (current >= max) return { ok: false, limit: "devices", current, max };
   return { ok: true };
 }
 
@@ -272,7 +307,8 @@ export async function authenticateToken(token: string): Promise<AuthenticatedDev
       github_username: string;
     }[]>`
       update devices
-      set last_active_at = now()
+      set last_active_at = now(),
+          last_synced_at = now()
       from users
       where devices.user_id = users.id
         and devices.token_hash = ${tokenHash}
@@ -293,6 +329,7 @@ export async function authenticateToken(token: string): Promise<AuthenticatedDev
   for (const device of devices.values()) {
     if (device.tokenHash === tokenHash && device.revokedAt === null) {
       device.lastActiveAt = nowIso();
+      device.lastSyncedAt = nowIso();
       const user = users.get(device.userId);
       if (
         relayDatabaseConfigured() &&
@@ -324,11 +361,12 @@ export async function createAuthSession(code: string, deviceName: string, device
   const sql = getRelaySql();
   if (sql) {
     await sql`
-      insert into cli_auth_sessions (code, device_name, expires_at)
-      values (${code}, ${deviceName}, ${session.expiresAt})
+      insert into cli_auth_sessions (code, device_id, device_name, expires_at)
+      values (${code}, ${deviceId ?? null}, ${deviceName}, ${session.expiresAt})
       on conflict (code)
       do update set
         device_name = excluded.device_name,
+        device_id = excluded.device_id,
         user_id = null,
         approved_at = null,
         expires_at = excluded.expires_at,
@@ -352,7 +390,7 @@ export async function approveAuthSession(code: string, githubUsername: string, e
       expires_at: Date | string;
       created_at: Date | string;
     }[]>`
-      select id, code, user_id, device_name, approved_at, expires_at, created_at
+      select id, code, user_id, device_id, device_name, approved_at, expires_at, created_at
       from cli_auth_sessions
       where code = ${code}
       limit 1
@@ -383,7 +421,7 @@ export async function approveAuthSession(code: string, githubUsername: string, e
         id: databaseUser.id,
         githubUsername: databaseUser.githubUsername,
         email: databaseUser.email,
-        tier: databaseUser.tier
+        tier: accountTierForPlan(databaseUser.tier)
       }
     : [...users.values()].find(
         (record) => record.githubUsername === githubUsername
@@ -398,6 +436,9 @@ export async function approveAuthSession(code: string, githubUsername: string, e
     id: session.deviceId ?? randomUUID(),
     userId: user.id,
     name: session.deviceName,
+    publicKeyFingerprint: hashToken(token),
+    firstSyncedAt: nowIso(),
+    lastSyncedAt: nowIso(),
     tokenHash: hashToken(token),
     token,
     lastActiveAt: nowIso(),
@@ -408,13 +449,26 @@ export async function approveAuthSession(code: string, githubUsername: string, e
 
   if (sql) {
     await sql`
-      insert into devices (id, user_id, name, token_hash, last_active_at, created_at, revoked_at)
-      values (${device.id}, ${user.id}, ${device.name}, ${device.tokenHash}, now(), now(), null)
+      insert into devices (
+        id,
+        user_id,
+        name,
+        token_hash,
+        public_key_fingerprint,
+        first_synced_at,
+        last_synced_at,
+        last_active_at,
+        created_at,
+        revoked_at
+      )
+      values (${device.id}, ${user.id}, ${device.name}, ${device.tokenHash}, ${device.publicKeyFingerprint ?? null}, now(), now(), now(), now(), null)
       on conflict (id)
       do update set
         name = excluded.name,
         token_hash = excluded.token_hash,
+        public_key_fingerprint = excluded.public_key_fingerprint,
         last_active_at = now(),
+        last_synced_at = now(),
         revoked_at = null
     `;
     await sql`
@@ -655,6 +709,56 @@ export async function findExpiredActiveBundles(now = new Date()) {
   );
 }
 
+export async function findExpiredFreeBundles(now = new Date(), retentionDays = 7) {
+  const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+  const sql = getRelaySql();
+  if (sql) {
+    const rows = await sql<Parameters<typeof mapBundle>[0][]>`
+      select bundles.id,
+             bundles.repository_id,
+             bundles.device_id,
+             bundles.bundle_hash,
+             bundles.commit_count,
+             bundles.size_bytes,
+             bundles.r2_key,
+             bundles.status,
+             bundles.parent_bundle_id,
+             bundles.created_at,
+             bundles.expires_at
+      from bundles
+      join repositories on repositories.id = bundles.repository_id
+      join users on users.id = repositories.user_id
+      where bundles.status = 'active'
+        and bundles.created_at < ${cutoff.toISOString()}
+        and users.tier = 'free'
+    `;
+    return rows.map(mapBundle);
+  }
+
+  return [...bundles.values()].filter((bundle) => {
+    if (bundle.status !== "active") return false;
+    if (new Date(bundle.createdAt).getTime() >= cutoff.getTime()) return false;
+    const repo = repositories.get(bundle.repositoryId);
+    if (!repo) return false;
+    return users.get(repo.userId)?.tier === "free";
+  });
+}
+
+export async function bundleAccountId(repositoryId: string) {
+  const sql = getRelaySql();
+  if (sql) {
+    const [row] = await sql<{ user_id: string }[]>`
+      select user_id
+      from repositories
+      where id = ${repositoryId}
+      limit 1
+    `;
+    return row?.user_id ?? null;
+  }
+
+  return repositories.get(repositoryId)?.userId ?? null;
+}
+
 export async function expireBundle(bundleId: string) {
   return updateBundleStatus(bundleId, "expired");
 }
@@ -877,7 +981,7 @@ export async function listDevices(userId: string) {
   const sql = getRelaySql();
   if (sql) {
     const rows = await sql<Parameters<typeof mapDevice>[0][]>`
-      select id, user_id, name, last_active_at, created_at, revoked_at
+      select id, user_id, name, public_key_fingerprint, first_synced_at, last_synced_at, last_active_at, created_at, revoked_at
       from devices
       where user_id = ${userId}
       order by revoked_at nulls first, last_active_at desc nulls last, created_at desc
@@ -930,6 +1034,57 @@ export async function getUsage(userId: string): Promise<UsageSummary> {
   };
 }
 
+export async function getAccountLimits(userId: string): Promise<AccountLimitsResponse> {
+  const tier = await accountTierForUser(userId);
+  const limits = accountLimitsForTier(tier);
+  const devices = await listDevices(userId);
+
+  return {
+    tier,
+    devices: {
+      limit: limits.devices.limit,
+      current: devices.filter((device) => device.revokedAt === null).length
+    },
+    retention_days: limits.retentionDays
+  };
+}
+
+export async function setAccountTierForTest(userId: string, tier: AccountTier) {
+  const sql = getRelaySql();
+  if (sql) {
+    await sql`
+      update users
+      set tier = ${tier},
+          tier_updated_at = now(),
+          updated_at = now()
+      where id = ${userId}
+    `;
+    return;
+  }
+
+  const user = users.get(userId);
+  if (user) user.tier = tier;
+}
+
+export async function setAccountTierByIdentityForTest(
+  githubUsername: string,
+  email: string,
+  tier: AccountTier
+) {
+  const databaseUser = await findRelayDatabaseUserByIdentity(githubUsername, email);
+  if (databaseUser) {
+    await setAccountTierForTest(databaseUser.id, tier);
+    return true;
+  }
+
+  const user = [...users.values()].find(
+    (record) => record.githubUsername === githubUsername || record.email.toLowerCase() === email.toLowerCase()
+  );
+  if (!user) return false;
+  user.tier = tier;
+  return true;
+}
+
 export async function seedLimitScenario(input: {
   username: string;
   tier?: PlanTier;
@@ -941,7 +1096,7 @@ export async function seedLimitScenario(input: {
     id: randomUUID(),
     githubUsername: input.username,
     email: `${input.username}@example.com`,
-    tier: input.tier ?? "free"
+    tier: accountTierForPlan(input.tier)
   };
   users.set(user.id, user);
 
@@ -950,6 +1105,9 @@ export async function seedLimitScenario(input: {
     id: randomUUID(),
     userId: user.id,
     name: `${input.username}-primary`,
+    publicKeyFingerprint: hashToken(token),
+    firstSyncedAt: nowIso(),
+    lastSyncedAt: nowIso(),
     tokenHash: hashToken(token),
     token,
     lastActiveAt: nowIso(),
@@ -965,6 +1123,9 @@ export async function seedLimitScenario(input: {
       id: deviceId,
       userId: user.id,
       name: `${input.username}-device-${i + 1}`,
+      publicKeyFingerprint: hashToken(deviceToken),
+      firstSyncedAt: nowIso(),
+      lastSyncedAt: nowIso(),
       tokenHash: hashToken(deviceToken),
       token: deviceToken,
       lastActiveAt: nowIso(),
@@ -1023,6 +1184,9 @@ export async function seedCleanupScenario(input: { username: string }) {
     id: randomUUID(),
     userId: user.id,
     name: `${input.username}-device`,
+    publicKeyFingerprint: hashToken(deviceToken),
+    firstSyncedAt: nowIso(),
+    lastSyncedAt: nowIso(),
     tokenHash: hashToken(deviceToken),
     token: deviceToken,
     lastActiveAt: nowIso(),
@@ -1046,6 +1210,40 @@ export async function seedCleanupScenario(input: { username: string }) {
   const expiredKey = `${user.id}/${repo.relayEntryId}/expired.bundle.enc`;
   const activeKey = `${user.id}/${repo.relayEntryId}/active.bundle.enc`;
   const droppedKey = `${user.id}/${repo.relayEntryId}/dropped.bundle.enc`;
+  const paidUser: UserRecord = {
+    id: randomUUID(),
+    githubUsername: `${input.username}-paid`,
+    email: `${input.username}-paid@example.com`,
+    tier: "paid"
+  };
+  users.set(paidUser.id, paidUser);
+  const paidDeviceToken = `gf_${randomBytes(32).toString("base64url")}`;
+  const paidDevice: Device & { tokenHash: string; token: string } = {
+    id: randomUUID(),
+    userId: paidUser.id,
+    name: `${input.username}-paid-device`,
+    publicKeyFingerprint: hashToken(paidDeviceToken),
+    firstSyncedAt: nowIso(),
+    lastSyncedAt: nowIso(),
+    tokenHash: hashToken(paidDeviceToken),
+    token: paidDeviceToken,
+    lastActiveAt: nowIso(),
+    createdAt: nowIso(),
+    revokedAt: null
+  };
+  devices.set(paidDevice.id, paidDevice);
+  const paidRepo: Repository = {
+    id: randomUUID(),
+    userId: paidUser.id,
+    rootSha: `${input.username}-paid-root`,
+    displayName: `${input.username}-paid-repo`,
+    remoteUrl: null,
+    relayEntryId: `${input.username}-paid-entry`,
+    createdAt: nowIso(),
+    lastSyncedAt: null
+  };
+  repositories.set(paidRepo.id, paidRepo);
+  const paidOldKey = `${paidUser.id}/${paidRepo.relayEntryId}/paid-old.bundle.enc`;
   const baseBundle = {
     repositoryId: repo.id,
     deviceId: device.id,
@@ -1058,6 +1256,7 @@ export async function seedCleanupScenario(input: { username: string }) {
   const expiredBundle: Bundle = {
     id: randomUUID(),
     ...baseBundle,
+    createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
     bundleHash: `${input.username}-expired`,
     r2Key: expiredKey,
     status: "active",
@@ -1079,19 +1278,35 @@ export async function seedCleanupScenario(input: { username: string }) {
     status: "dropped",
     expiresAt: new Date(Date.now() - 60 * 1000).toISOString()
   };
+  const paidOldBundle: Bundle = {
+    id: randomUUID(),
+    repositoryId: paidRepo.id,
+    deviceId: paidDevice.id,
+    commitCount: 1,
+    sizeBytes: 10,
+    parentBundleId: null,
+    createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+    bundleHash: `${input.username}-paid-old`,
+    r2Key: paidOldKey,
+    status: "active",
+    expiresAt: new Date(Date.now() - 60 * 1000).toISOString()
+  };
 
   bundles.set(expiredBundle.id, expiredBundle);
   bundles.set(activeBundle.id, activeBundle);
   bundles.set(droppedBundle.id, droppedBundle);
+  bundles.set(paidOldBundle.id, paidOldBundle);
 
   return {
     expiredKey,
     activeKey,
     droppedKey,
+    paidOldKey,
     bundleIds: {
       expired: expiredBundle.id,
       active: activeBundle.id,
-      dropped: droppedBundle.id
+      dropped: droppedBundle.id,
+      paidOld: paidOldBundle.id
     }
   };
 }
