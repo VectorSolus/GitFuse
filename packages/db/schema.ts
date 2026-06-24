@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const planTier = pgEnum("plan_tier", ["free", "pro", "team", "enterprise"]);
+export const accountTier = pgEnum("account_tier", ["free", "paid"]);
 export const syncEventType = pgEnum("sync_event_type", ["sync", "pull", "drop", "undo", "rebase-sync"]);
 export const bundleStatus = pgEnum("bundle_status", ["active", "superseded", "expired", "dropped"]);
 
@@ -24,6 +25,9 @@ export const users = pgTable(
     githubId: text("github_id").notNull(),
     githubUsername: text("github_username").notNull(),
     email: text("email").notNull(),
+    tier: accountTier("tier").notNull().default("free"),
+    tierUpdatedAt: timestamp("tier_updated_at", { withTimezone: true }).notNull().defaultNow(),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     passwordHash: text("password_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
@@ -40,6 +44,9 @@ export const devices = pgTable(
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     tokenHash: text("token_hash").notNull(),
+    publicKeyFingerprint: text("public_key_fingerprint"),
+    firstSyncedAt: timestamp("first_synced_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
     lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     revokedAt: timestamp("revoked_at", { withTimezone: true })
@@ -168,6 +175,7 @@ export const cliAuthSessions = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     code: text("code").notNull(),
     userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    deviceId: uuid("device_id"),
     deviceName: text("device_name").notNull(),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

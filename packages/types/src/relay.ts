@@ -13,6 +13,13 @@ export type OverLimitError = {
   max: number;
 };
 
+export type DeviceLimitReachedError = {
+  error: "device_limit_reached";
+  tier: "free";
+  limit: 2;
+  current: number;
+};
+
 export type BundleRejectedReason = "VERSION_MISMATCH" | "CORRUPT" | "HASH_MISMATCH";
 
 export type BundleRejectedError = {
@@ -24,6 +31,7 @@ export type BundleRejectedError = {
 export type RelayError =
   | SessionExpiredError
   | OverLimitError
+  | DeviceLimitReachedError
   | BundleRejectedError
   | { error: "NOT_FOUND"; message: string }
   | { error: "CONFLICT"; message: string }

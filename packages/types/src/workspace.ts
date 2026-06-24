@@ -4,6 +4,9 @@ export type Device = {
   id: string;
   userId: string;
   name: string;
+  publicKeyFingerprint?: string | null;
+  firstSyncedAt?: string | null;
+  lastSyncedAt?: string | null;
   lastActiveAt: string | null;
   createdAt: string;
   revokedAt: string | null;
