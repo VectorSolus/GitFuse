@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
+import React from "react";
 
-import { findDashboardAccountForSession } from "@/lib/account";
-import { auth } from "@/lib/auth";
-import { getDashboardBilling } from "@/lib/billing";
+import { findDashboardAccountForSession } from "../../lib/account";
+import { auth } from "../../lib/auth";
+import { getDashboardBilling } from "../../lib/billing";
 import { DashboardLayout } from "./components/layout/dashboard-layout";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,10 @@ export default async function AppDashboardLayout({
 
   if (!account) {
     redirect("/login?error=session_expired");
+  }
+
+  if (!account.email_verified_at) {
+    redirect("/verify");
   }
 
   const billing = await getDashboardBilling({

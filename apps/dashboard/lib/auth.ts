@@ -7,19 +7,16 @@ import {
   findDashboardAccountByEmail,
   findDashboardAccountById,
   findDashboardAccountByProviderIdentity,
-  markDashboardAccountEmailVerified,
-  setDashboardAccountPassword,
   upsertDashboardAccount,
   type AuthProvider,
   type DashboardAccount,
 } from "./account";
-import { oauthPostLoginRedirect } from "./auth-oauth";
-import { normalizeEmail, verifyOtpChallenge } from "./otp";
+import { authorizeEmailPassword } from "./auth-email";
 import {
-  hashPassword,
-  isValidPassword,
-  verifyPassword,
-} from "./password";
+  oauthEmailVerifiedAt,
+  oauthSuccessfulSignInResult,
+} from "./auth-oauth";
+import { normalizeEmail } from "./otp";
 
 const githubClientId = process.env.GITHUB_CLIENT_ID?.trim();
 const githubClientSecret = process.env.GITHUB_CLIENT_SECRET?.trim();
@@ -90,57 +87,13 @@ const providers = [
       otpCode: { label: "OTP code", type: "text" },
     },
     async authorize(credentials) {
-      const email = normalizeEmail(String(credentials?.email ?? ""));
-      const password = String(credentials?.password ?? "");
-      const otp = String(credentials?.otpCode ?? credentials?.otp ?? "");
-
-      const existingUser = await findDashboardAccountByEmail(email);
-
-      if (password && !otp) {
-        if (
-          !existingUser?.password_hash ||
-          !(await verifyPassword(password, existingUser.password_hash))
-        ) {
-          return null;
-        }
-
-        return authUser(existingUser);
-      }
-
-      if (!otp) return null;
-
-      const verification = await verifyOtpChallenge(email, otp);
-
-      if (!verification.ok) {
-        return null;
-      }
-
-      if (existingUser) {
-        if (!existingUser.password_hash && isValidPassword(password)) {
-          const user = await setDashboardAccountPassword(
-            existingUser.id,
-            await hashPassword(password),
-          );
-
-        if (!user) return null;
-        }
-
-        const verifiedUser = await markDashboardAccountEmailVerified(existingUser.id);
-        return authUser(verifiedUser ?? existingUser);
-      }
-
-      if (!isValidPassword(password)) return null;
-
-      const { user } = await upsertDashboardAccount({
-        provider: "email",
-        providerAccountId: email,
-        username: email.split("@")[0],
-        email,
-        emailVerifiedAt: new Date().toISOString(),
-        passwordHash: await hashPassword(password),
+      const user = await authorizeEmailPassword({
+        email: String(credentials?.email ?? ""),
+        password: String(credentials?.password ?? ""),
+        otp: String(credentials?.otpCode ?? credentials?.otp ?? ""),
       });
 
-      return authUser(user);
+      return user ? authUser(user) : null;
     },
   }),
 ];
@@ -206,15 +159,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           provider,
           providerAccountId,
         )) ?? (await findDashboardAccountByEmail(email));
-      const redirectTo = oauthPostLoginRedirect(existingUser);
 
       await upsertDashboardAccount({
         provider,
         providerAccountId,
         username,
         email,
+        emailVerifiedAt: oauthEmailVerifiedAt({
+          provider,
+          account: existingUser,
+        }),
       });
-      return redirectTo === "/dashboard" ? true : redirectTo;
+
+      return oauthSuccessfulSignInResult();
     },
 
     async jwt({ token, user, account }) {
