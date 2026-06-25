@@ -1,6 +1,6 @@
 import { google } from "googleapis";
 
-import { sendEmail } from "./resend";
+import { requiredResendConfig, sendEmail } from "./resend";
 
 export type TransactionalEmailInput = {
   to: string;
@@ -74,6 +74,13 @@ function buildGmailMessage(input: TransactionalEmailInput, senderEmail: string) 
   return Buffer.from(message, "utf8").toString("base64url");
 }
 
+function htmlForInput(input: TransactionalEmailInput) {
+  return (
+    input.html ??
+    `<div style="white-space:pre-wrap">${escapeHtml(input.text)}</div>`
+  );
+}
+
 async function sendWithGmail(input: TransactionalEmailInput) {
   const config = requiredGmailConfig();
   const auth = new google.auth.OAuth2(config.clientId, config.clientSecret);
@@ -88,6 +95,17 @@ async function sendWithGmail(input: TransactionalEmailInput) {
   });
 }
 
+async function sendWithResend(input: TransactionalEmailInput) {
+  requiredResendConfig();
+
+  await sendEmail({
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+    html: htmlForInput(input),
+  });
+}
+
 export async function sendTransactionalEmail(
   input: TransactionalEmailInput,
 ): Promise<void> {
@@ -98,15 +116,13 @@ export async function sendTransactionalEmail(
     return;
   }
 
-  if (process.env.RESEND_API_KEY?.trim()) {
-    await sendEmail({
-      to: input.to,
-      subject: input.subject,
-      text: input.text,
-      html:
-        input.html ??
-        `<div style="white-space:pre-wrap">${escapeHtml(input.text)}</div>`,
-    });
+  if (provider === "resend") {
+    await sendWithResend(input);
+    return;
+  }
+
+  if (!provider && process.env.RESEND_API_KEY?.trim()) {
+    await sendWithResend(input);
     return;
   }
 

@@ -1,3 +1,5 @@
+import { Resend } from "resend";
+
 import { getSql } from "./db";
 
 export type EmailInput = {
@@ -16,7 +18,25 @@ type ExpiringBundleRow = {
 };
 
 function fromAddress() {
-  return process.env.RESEND_FROM_EMAIL ?? "gitfuse <notifications@gitfuse.dev>";
+  return (
+    process.env.RESEND_FROM_EMAIL?.trim() ??
+    "gitfuse <notifications@gitfuse.dev>"
+  );
+}
+
+export function requiredResendConfig() {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.RESEND_FROM_EMAIL?.trim();
+
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is required when EMAIL_PROVIDER=resend");
+  }
+
+  if (!from) {
+    throw new Error("RESEND_FROM_EMAIL is required when EMAIL_PROVIDER=resend");
+  }
+
+  return { apiKey, from };
 }
 
 function toIso(value: Date | string) {
@@ -34,27 +54,20 @@ export async function sendEmail(input: EmailInput) {
     return { id: `log_${Date.now()}` };
   }
 
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = process.env.RESEND_API_KEY?.trim();
   if (!apiKey) throw new Error("RESEND_API_KEY is required");
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      from: fromAddress(),
-      to: input.to,
-      subject: input.subject,
-      html: input.html,
-      text: input.text
-    }),
-    cache: "no-store"
+  const resend = new Resend(apiKey);
+  const response = await resend.emails.send({
+    from: fromAddress(),
+    to: input.to,
+    subject: input.subject,
+    html: input.html,
+    text: input.text
   });
 
-  if (!response.ok) throw new Error(`Resend email failed with status ${response.status}`);
-  return (await response.json()) as { id: string };
+  if (response.error) throw new Error(`Resend email failed: ${response.error.message}`);
+  return response.data;
 }
 
 function defaultAuthEmailLog() {
