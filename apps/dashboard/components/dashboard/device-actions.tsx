@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useId, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AlertTriangle, MoreHorizontal } from "lucide-react";
 
 import type { DashboardDevice } from "../../lib/devices";
-import { shortDeviceId } from "../../lib/device-summary";
+import {
+  getDeviceDisplayStatus,
+  shortDeviceId,
+} from "../../lib/device-summary";
 
 type RevokeResponse =
   | {
@@ -27,6 +30,7 @@ export type DeviceActionsProps = {
   isCurrentDevice?: boolean;
   initialMenuOpen?: boolean;
   initialDialogOpen?: boolean;
+  now?: Date;
 };
 
 export function dashboardDeviceRevokeEndpoint(deviceId: string) {
@@ -39,15 +43,80 @@ export function DeviceActions({
   isCurrentDevice = false,
   initialMenuOpen = false,
   initialDialogOpen = false,
+  now,
 }: DeviceActionsProps) {
   const menuId = useId();
   const dialogId = useId();
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuItemRef = useRef<HTMLButtonElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(initialMenuOpen);
   const [dialogOpen, setDialogOpen] = useState(initialDialogOpen);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const immutableSuffix = useMemo(() => shortDeviceId(device.id), [device.id]);
-  const canRevoke = device.status === "active";
+  const displayStatus = getDeviceDisplayStatus(device, now);
+  const canRevoke = displayStatus !== "revoked";
+
+  function focusTrigger() {
+    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  }
+
+  useEffect(() => {
+    if (!menuOpen || dialogOpen) return;
+
+    menuItemRef.current?.focus();
+
+    function handlePointerDown(event: PointerEvent) {
+      if (
+        event.target instanceof Node &&
+        actionsRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+
+      setMenuOpen(false);
+      focusTrigger();
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+
+      event.preventDefault();
+      setMenuOpen(false);
+      focusTrigger();
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [dialogOpen, menuOpen]);
+
+  useEffect(() => {
+    if (!dialogOpen) return;
+
+    cancelButtonRef.current?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape" || pending) return;
+
+      event.preventDefault();
+      setDialogOpen(false);
+      setMenuOpen(false);
+      focusTrigger();
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [dialogOpen, pending]);
 
   async function confirmRevoke() {
     if (pending || !canRevoke) return;
@@ -100,15 +169,22 @@ export function DeviceActions({
   }
 
   return (
-    <div className="gf-device-actions">
+    <div className="gf-device-actions" ref={actionsRef}>
       <button
+        ref={triggerRef}
         type="button"
         className="gf-device-action-trigger"
-        aria-label="Device actions"
+        aria-label={`Device actions for ${device.name}`}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         aria-controls={menuId}
         onClick={() => setMenuOpen((open) => !open)}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowDown") return;
+
+          event.preventDefault();
+          setMenuOpen(true);
+        }}
       >
         <MoreHorizontal aria-hidden="true" size={18} />
       </button>
@@ -117,11 +193,13 @@ export function DeviceActions({
         <div id={menuId} className="gf-device-action-menu" role="menu">
           {canRevoke ? (
             <button
+              ref={menuItemRef}
               type="button"
               className="gf-device-action-menu-item gf-device-action-menu-danger"
               role="menuitem"
               onClick={() => {
                 setError(null);
+                setMenuOpen(false);
                 setDialogOpen(true);
               }}
             >
@@ -129,13 +207,14 @@ export function DeviceActions({
             </button>
           ) : (
             <button
+              ref={menuItemRef}
               type="button"
               className="gf-device-action-menu-item"
               role="menuitem"
               aria-disabled="true"
               disabled
             >
-              Revoked
+              Already revoked
             </button>
           )}
         </div>
@@ -180,7 +259,7 @@ export function DeviceActions({
             <dl className="gf-device-dialog-details">
               <div>
                 <dt>Status</dt>
-                <dd>{device.status}</dd>
+                <dd>{displayStatus}</dd>
               </div>
               <div>
                 <dt>Device ID</dt>
@@ -192,6 +271,7 @@ export function DeviceActions({
 
             <div className="gf-device-dialog-actions">
               <button
+                ref={cancelButtonRef}
                 type="button"
                 className="gf-device-dialog-cancel"
                 disabled={pending}

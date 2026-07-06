@@ -8,6 +8,7 @@ import { useDashboardData } from "@/hooks/use-dashboard-data";
 import {
   buildDashboardDeviceSummary,
   filterDashboardDevices,
+  getDeviceDisplayStatus,
   shortDeviceId,
 } from "@/lib/device-summary";
 
@@ -49,6 +50,7 @@ export default function DevicesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const devices = data?.devices ?? [];
+  const statusNow = useMemo(() => new Date(), [devices]);
   const deviceSummary =
     data?.deviceSummary ??
     buildDashboardDeviceSummary({
@@ -58,8 +60,8 @@ export default function DevicesPage() {
       pendingApprovalCount: 0,
     });
   const visibleDevices = useMemo(() => {
-    return filterDashboardDevices(devices, searchQuery, statusFilter);
-  }, [devices, searchQuery, statusFilter]);
+    return filterDashboardDevices(devices, searchQuery, statusFilter, statusNow);
+  }, [devices, searchQuery, statusFilter, statusNow]);
 
   const deviceMetrics = [
     {
@@ -172,44 +174,50 @@ export default function DevicesPage() {
               onChange={(event) => setStatusFilter(event.target.value)}
             >
               <option value="all">All devices</option>
-              <option value="trusted">Trusted</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
               <option value="revoked">Revoked</option>
             </select>
           </div>
 
           {visibleDevices.length > 0 ? (
             <div className="gf-devices-card-list" aria-label="All devices">
-              {visibleDevices.map((device) => (
-                <article className="gf-device-card" key={device.id}>
-                  <div className="gf-device-card-main">
-                    <div>
-                      <span className="gf-device-card-name">
-                        {device.name}
-                      </span>
-                      <code>#{shortDeviceId(device.id)}</code>
+              {visibleDevices.map((device) => {
+                const displayStatus = getDeviceDisplayStatus(device, statusNow);
+
+                return (
+                  <article className="gf-device-card" key={device.id}>
+                    <div className="gf-device-card-main">
+                      <div className="gf-device-card-identity">
+                        <span className="gf-device-card-name" title={device.name}>
+                          {device.name}
+                        </span>
+                        <code>#{shortDeviceId(device.id)}</code>
+                      </div>
+
+                      <strong
+                        className={`gf-device-status gf-device-status-${displayStatus}`}
+                      >
+                        {displayStatus}
+                      </strong>
+
+                      <DeviceActions
+                        device={device}
+                        now={statusNow}
+                        onRevoked={() => {
+                          refresh();
+                        }}
+                      />
                     </div>
 
-                    <strong
-                      className={`gf-device-status gf-device-status-${device.status}`}
-                    >
-                      {device.status}
-                    </strong>
-                  </div>
-
-                  <p>
-                    {device.lastActiveAt
-                      ? `Last active ${formatDate(device.lastActiveAt)}`
-                      : "Not active yet"}
-                  </p>
-
-                  <DeviceActions
-                    device={device}
-                    onRevoked={() => {
-                      refresh();
-                    }}
-                  />
-                </article>
-              ))}
+                    <p>
+                      {device.lastActiveAt
+                        ? `Last active ${formatDate(device.lastActiveAt)}`
+                        : "Not active yet"}
+                    </p>
+                  </article>
+                );
+              })}
             </div>
           ) : devices.length > 0 ? (
             <div className="gf-devices-empty">

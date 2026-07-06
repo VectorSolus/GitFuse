@@ -8,6 +8,8 @@ import {
 } from "./device-actions";
 import type { DashboardDevice } from "../../lib/devices";
 
+const actionNow = new Date("2026-07-06T07:25:05.788Z");
+
 const duplicateHostnameDevices: DashboardDevice[] = [
   {
     id: "00000000-0000-4000-8000-000000000401",
@@ -20,7 +22,7 @@ const duplicateHostnameDevices: DashboardDevice[] = [
   {
     id: "00000000-0000-4000-8000-000000000402",
     name: "Piyushs-MacBook-Pro.local",
-    lastActiveAt: "2026-06-29T07:25:10.246Z",
+    lastActiveAt: "2026-06-20T07:25:10.246Z",
     createdAt: "2026-06-29T07:20:09.000Z",
     revokedAt: null,
     status: "active",
@@ -35,12 +37,16 @@ const duplicateHostnameDevices: DashboardDevice[] = [
   },
 ];
 
-function renderActions(device: DashboardDevice, options: { menu?: boolean; dialog?: boolean } = {}) {
+function renderActions(
+  device: DashboardDevice,
+  options: { menu?: boolean; dialog?: boolean } = {},
+) {
   return renderToStaticMarkup(
     <DeviceActions
       device={device}
       initialDialogOpen={options.dialog}
       initialMenuOpen={options.menu}
+      now={actionNow}
       onRevoked={() => undefined}
     />,
   );
@@ -52,8 +58,12 @@ describe("DeviceActions", () => {
       .map((device) => renderActions(device))
       .join("");
 
-    expect(markup.match(/aria-label="Device actions"/g)).toHaveLength(3);
-    expect(new Set(duplicateHostnameDevices.map((device) => device.id)).size).toBe(3);
+    expect(
+      markup.match(/aria-label="Device actions for Piyushs-MacBook-Pro.local"/g),
+    ).toHaveLength(3);
+    expect(new Set(duplicateHostnameDevices.map((device) => device.id)).size).toBe(
+      3,
+    );
   });
 
   it("exposes a destructive revoke menu item for active devices", () => {
@@ -64,12 +74,27 @@ describe("DeviceActions", () => {
     expect(markup).toContain("gf-device-action-menu-danger");
   });
 
+  it("keeps revoke enabled for inactive trusted devices", () => {
+    const markup = renderActions(duplicateHostnameDevices[1], { menu: true });
+
+    expect(markup).toContain("Revoke device");
+    expect(markup).toContain("gf-device-action-menu-danger");
+    expect(markup).not.toContain("Already revoked");
+  });
+
   it("does not expose an enabled revoke mutation for revoked devices", () => {
     const markup = renderActions(duplicateHostnameDevices[2], { menu: true });
 
-    expect(markup).toContain("Revoked");
+    expect(markup).toContain("Already revoked");
     expect(markup).toContain("disabled");
     expect(markup).not.toContain("gf-device-action-menu-danger");
+  });
+
+  it("renders the menu as a floating action menu", () => {
+    const markup = renderActions(duplicateHostnameDevices[0], { menu: true });
+
+    expect(markup).toContain('class="gf-device-actions"');
+    expect(markup).toContain('class="gf-device-action-menu" role="menu"');
   });
 
   it("opens confirmation copy without full sensitive identifiers", () => {
