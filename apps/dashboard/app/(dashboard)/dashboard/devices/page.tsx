@@ -1,6 +1,15 @@
 "use client";
 
+import { useMemo, useState } from "react";
+
+import { DeviceActions } from "@/components/dashboard/device-actions";
+import { DashboardDataError } from "@/components/dashboard/data-error";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
+import {
+  buildDashboardDeviceSummary,
+  filterDashboardDevices,
+  shortDeviceId,
+} from "@/lib/device-summary";
 
 const setupSteps = [
   {
@@ -30,37 +39,52 @@ const securityItems = [
   },
   {
     label: "Session revocation",
-    value: "Available soon",
-    helper: "Revoke access from the dashboard in upcoming releases.",
+    value: "Enabled",
+    helper: "Revoke trusted CLI devices directly from this dashboard.",
   },
 ];
 
 export default function DevicesPage() {
-  const { data } = useDashboardData();
+  const { data, error, loading, refresh } = useDashboardData();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const devices = data?.devices ?? [];
-  const trustedDevices = devices.filter((device) => device.status === "active");
-  const activeDeviceCount = trustedDevices.filter((device) => device.lastActiveAt).length;
+  const deviceSummary =
+    data?.deviceSummary ??
+    buildDashboardDeviceSummary({
+      devices,
+      deviceLimit: data?.accountLimits?.devices.limit ?? data?.usage.devices.max ?? 3,
+      activeSessionCount: data ? 1 : 0,
+      pendingApprovalCount: 0,
+    });
+  const visibleDevices = useMemo(() => {
+    return filterDashboardDevices(devices, searchQuery, statusFilter);
+  }, [devices, searchQuery, statusFilter]);
 
   const deviceMetrics = [
     {
       label: "Trusted devices",
-      value: `${trustedDevices.length} / ${formatLimit(data?.usage.devices.max ?? 3)}`,
+      value: `${deviceSummary.trustedDeviceCount} / ${formatLimit(deviceSummary.deviceLimit)}`,
       helper: "machines linked to this workspace",
       tone: "ocean",
     },
     {
       label: "Active sessions",
-      value: String(activeDeviceCount),
+      value: String(deviceSummary.activeSessionCount),
       helper: "currently authenticated clients",
       tone: "green",
     },
     {
       label: "Pending approvals",
-      value: "0",
+      value: String(deviceSummary.pendingApprovalCount),
       helper: "device requests waiting for approval",
       tone: "violet",
     },
   ];
+
+  if (error && !loading) {
+    return <DashboardDataError message={error} />;
+  }
 
   return (
     <div className="gf-devices-page">
@@ -134,30 +158,63 @@ export default function DevicesPage() {
                 />
               </svg>
 
-              <input type="search" placeholder="Search devices..." />
+              <input
+                type="search"
+                placeholder="Search devices..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
             </label>
 
-            <select aria-label="Device status filter">
-              <option>All devices</option>
-              <option>Trusted</option>
-              <option>Pending</option>
-              <option>Revoked</option>
+            <select
+              aria-label="Device status filter"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option value="all">All devices</option>
+              <option value="trusted">Trusted</option>
+              <option value="revoked">Revoked</option>
             </select>
           </div>
 
-          {devices.length > 0 ? (
-            <div className="gf-devices-command-list">
-              {devices.map((device) => (
-                <div key={device.id}>
-                  <span>{device.name}</span>
-                  <code>
-                    {device.status} ·{" "}
+          {visibleDevices.length > 0 ? (
+            <div className="gf-devices-card-list" aria-label="All devices">
+              {visibleDevices.map((device) => (
+                <article className="gf-device-card" key={device.id}>
+                  <div className="gf-device-card-main">
+                    <div>
+                      <span className="gf-device-card-name">
+                        {device.name}
+                      </span>
+                      <code>#{shortDeviceId(device.id)}</code>
+                    </div>
+
+                    <strong
+                      className={`gf-device-status gf-device-status-${device.status}`}
+                    >
+                      {device.status}
+                    </strong>
+                  </div>
+
+                  <p>
                     {device.lastActiveAt
-                      ? `last active ${formatDate(device.lastActiveAt)}`
-                      : "not active yet"}
-                  </code>
-                </div>
+                      ? `Last active ${formatDate(device.lastActiveAt)}`
+                      : "Not active yet"}
+                  </p>
+
+                  <DeviceActions
+                    device={device}
+                    onRevoked={() => {
+                      refresh();
+                    }}
+                  />
+                </article>
               ))}
+            </div>
+          ) : devices.length > 0 ? (
+            <div className="gf-devices-empty">
+              <h4>No matching devices</h4>
+              <p>Adjust the search or status filter to show trusted machines.</p>
             </div>
           ) : (
             <div className="gf-devices-empty">

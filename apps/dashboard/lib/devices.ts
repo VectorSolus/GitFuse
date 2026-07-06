@@ -7,6 +7,7 @@ export type DashboardDevice = Pick<Device, "id" | "name" | "lastActiveAt" | "cre
 };
 
 type AccountLookup = {
+  id?: string | null;
   email?: string | null;
   username?: string | null;
 };
@@ -34,6 +35,29 @@ function mapDevice(row: DeviceRow): DashboardDevice {
     revokedAt,
     status: revokedAt ? "revoked" : "active"
   };
+}
+
+const COMPLETE_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export type DashboardDeviceRevokeResult =
+  | {
+      ok: true;
+      alreadyRevoked: boolean;
+      device: {
+        id: string;
+        revoked: true;
+        revokedAt: string;
+      };
+    }
+  | {
+      ok: false;
+      error: "INVALID_DEVICE_ID" | "DEVICE_NOT_FOUND";
+      message: string;
+    };
+
+export function isCompleteDeviceUuid(value: string) {
+  return COMPLETE_UUID_PATTERN.test(value);
 }
 
 async function loadFixtureDevices(fixturePath: string) {
@@ -65,44 +89,109 @@ export async function listDashboardDevices(
     select devices.id, devices.name, devices.last_active_at, devices.created_at, devices.revoked_at
     from devices
     join dashboard_user on dashboard_user.id = devices.user_id
-    order by devices.revoked_at nulls first, devices.last_active_at desc nulls last, devices.created_at desc
+    order by devices.revoked_at nulls first,
+             devices.last_active_at desc nulls last,
+             devices.created_at desc,
+             devices.id asc
   `;
 
   return rows.map(mapDevice);
+}
+
+export async function countPendingDashboardDeviceApprovals(userId: string) {
+  const sql = getSql();
+  const [row] = await sql<{ count: number | string }[]>`
+    select count(*)::int as count
+    from cli_auth_sessions
+    where user_id = ${userId}
+      and approved_at is null
+      and expires_at > now()
+  `;
+
+  return Number(row?.count ?? 0);
 }
 
 export async function revokeDashboardDevice(
   account: AccountLookup,
   deviceId: string,
   options: { revokeLog?: string | null } = {}
-) {
-  if (!deviceId) throw new Error("deviceId is required");
+): Promise<DashboardDeviceRevokeResult> {
+  if (!isCompleteDeviceUuid(deviceId)) {
+    return {
+      ok: false,
+      error: "INVALID_DEVICE_ID",
+      message: "A complete device UUID is required.",
+    };
+  }
 
   if (process.env.NODE_ENV !== "production" && options.revokeLog) {
     const { appendFile } = await import("node:fs/promises");
     await appendFile(options.revokeLog, `revoked=${deviceId} email=${account.email ?? ""}\n`);
-    return { revoked: true };
+    return {
+      ok: true,
+      alreadyRevoked: false,
+      device: {
+        id: deviceId,
+        revoked: true,
+        revokedAt: new Date().toISOString(),
+      },
+    };
   }
 
-  if (!account.email && !account.username) return { revoked: false };
+  if (!account.id && !account.email && !account.username) {
+    return {
+      ok: false,
+      error: "DEVICE_NOT_FOUND",
+      message: "Device not found.",
+    };
+  }
 
   const sql = getSql();
-  const [device] = await sql<{ id: string }[]>`
+  const [device] = await sql<{
+    id: string;
+    revoked_at: Date | string;
+    was_revoked: boolean;
+  }[]>`
     with dashboard_user as (
       select id
       from users
-      where (${account.email ?? null}::text is not null and email = ${account.email ?? null})
+      where (${account.id ?? null}::uuid is not null and id = ${account.id ?? null})
+         or (${account.email ?? null}::text is not null and email = ${account.email ?? null})
          or (${account.username ?? null}::text is not null and github_username = ${account.username ?? null})
       order by updated_at desc
       limit 1
+    ),
+    locked_device as (
+      select devices.id, devices.revoked_at
+      from devices
+      join dashboard_user on dashboard_user.id = devices.user_id
+      where devices.id = ${deviceId}
+      for update
     )
     update devices
     set revoked_at = coalesce(revoked_at, now())
-    from dashboard_user
-    where devices.id = ${deviceId}
-      and devices.user_id = dashboard_user.id
-    returning devices.id
+    from locked_device
+    where devices.id = locked_device.id
+    returning devices.id,
+              devices.revoked_at,
+              locked_device.revoked_at is not null as was_revoked
   `;
 
-  return { revoked: Boolean(device) };
+  if (!device) {
+    return {
+      ok: false,
+      error: "DEVICE_NOT_FOUND",
+      message: "Device not found.",
+    };
+  }
+
+  return {
+    ok: true,
+    alreadyRevoked: device.was_revoked,
+    device: {
+      id: device.id,
+      revoked: true,
+      revokedAt: toIso(device.revoked_at) ?? new Date().toISOString(),
+    },
+  };
 }
