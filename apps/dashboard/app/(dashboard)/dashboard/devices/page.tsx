@@ -189,7 +189,10 @@ export default function DevicesPage() {
                   <article className="gf-device-card" key={device.id}>
                     <div className="gf-device-card-main">
                       <div className="gf-device-card-identity">
-                        <span className="gf-device-card-name" title={device.name}>
+                        <span
+                          className="gf-device-card-name"
+                          title={device.name}
+                        >
                           {device.name}
                         </span>
                         <code>#{shortDeviceId(device.id)}</code>
