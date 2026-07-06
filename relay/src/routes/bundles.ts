@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import type { SyncedCommit } from "@gitfuse/types/relay";
 import type { AuthenticatedDevice } from "../db/queries";
 import {
+  bundleAccountId,
   checkBundleUploadLimits,
   createBundleAndSyncEvent,
   findBundle,
@@ -93,8 +94,10 @@ bundleRoutes.get("/:relayEntryId", async (c) => {
 });
 
 bundleRoutes.get("/:bundleId/download", async (c) => {
+  const auth = c.get("auth");
   const bundle = await findBundle(c.req.param("bundleId"));
   if (!bundle || bundle.status !== "active") return notFound(c, "Bundle not found.");
+  if (await bundleAccountId(bundle.repositoryId) !== auth.userId) return notFound(c, "Bundle not found.");
 
   const object = await getBundleObject(bundle.r2Key);
   if (!object) return notFound(c, "Bundle object not found.");

@@ -2,11 +2,17 @@ package git
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
+	"strings"
+	"time"
 
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -20,15 +26,23 @@ type BundleFile struct {
 }
 
 type BundleCommit struct {
-	SHA        string            `json:"sha"`
-	Message    string            `json:"message"`
-	Files      []BundleFile      `json:"files"`
-	Submodules []BundleSubmodule `json:"submodules,omitempty"`
+	SHA         string            `json:"sha"`
+	Message     string            `json:"message"`
+	AuthorName  string            `json:"author_name,omitempty"`
+	AuthorEmail string            `json:"author_email,omitempty"`
+	AuthoredAt  string            `json:"authored_at,omitempty"`
+	CommittedAt string            `json:"committed_at,omitempty"`
+	Files       []BundleFile      `json:"files"`
+	Submodules  []BundleSubmodule `json:"submodules,omitempty"`
 }
 
 type BundleManifest struct {
-	RootSHA string         `json:"root_sha"`
-	Commits []BundleCommit `json:"commits"`
+	Version         int            `json:"version,omitempty"`
+	RootSHA         string         `json:"root_sha"`
+	HeadRef         string         `json:"head_ref,omitempty"`
+	HeadSHA         string         `json:"head_sha,omitempty"`
+	GitBundleBase64 string         `json:"git_bundle,omitempty"`
+	Commits         []BundleCommit `json:"commits"`
 }
 
 type BundleSubmodule struct {
@@ -56,12 +70,22 @@ func CreateIncrementalBundle(path, syncedHead string) (BundlePayload, error) {
 	if err != nil {
 		return BundlePayload{}, fmt.Errorf("read HEAD: %w", err)
 	}
+	headRef := ""
+	if head.Name().IsBranch() {
+		headRef = head.Name().String()
+	}
 
 	commits, err := commitsAfter(repo, head.Hash(), syncedHead)
 	if err != nil {
 		return BundlePayload{}, err
 	}
-	manifest := BundleManifest{RootSHA: root, Commits: make([]BundleCommit, 0, len(commits))}
+	manifest := BundleManifest{
+		Version: 2,
+		RootSHA: root,
+		HeadRef: headRef,
+		HeadSHA: head.Hash().String(),
+		Commits: make([]BundleCommit, 0, len(commits)),
+	}
 	submoduleSet := make(map[string]BundleSubmodule)
 	for _, commit := range commits {
 		files, err := committedFiles(commit)
@@ -76,11 +100,22 @@ func CreateIncrementalBundle(path, syncedHead string) (BundlePayload, error) {
 			submoduleSet[submodule.Path] = submodule
 		}
 		manifest.Commits = append(manifest.Commits, BundleCommit{
-			SHA:        commit.Hash.String(),
-			Message:    commit.Message,
-			Files:      files,
-			Submodules: submodules,
+			SHA:         commit.Hash.String(),
+			Message:     commit.Message,
+			AuthorName:  commit.Author.Name,
+			AuthorEmail: commit.Author.Email,
+			AuthoredAt:  formatCommitTime(commit.Author.When),
+			CommittedAt: formatCommitTime(commit.Committer.When),
+			Files:       files,
+			Submodules:  submodules,
 		})
+	}
+	if len(commits) > 0 {
+		nativeBundle, err := createNativeGitBundle(path, headRef, head.Hash().String(), syncedHead)
+		if err != nil {
+			return BundlePayload{}, err
+		}
+		manifest.GitBundleBase64 = base64.StdEncoding.EncodeToString(nativeBundle)
 	}
 
 	bytes, err := json.Marshal(manifest)
@@ -93,6 +128,44 @@ func CreateIncrementalBundle(path, syncedHead string) (BundlePayload, error) {
 	}
 	sort.Slice(submodules, func(i, j int) bool { return submodules[i].Path < submodules[j].Path })
 	return BundlePayload{Manifest: manifest, Bytes: bytes, SHA256: SHA256(bytes), Submodules: submodules}, nil
+}
+
+func createNativeGitBundle(repoPath, headRef, headSHA, syncedHead string) ([]byte, error) {
+	tmpDir, err := os.MkdirTemp("", "gitfuse-native-bundle-*")
+	if err != nil {
+		return nil, fmt.Errorf("create native bundle temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	target := headRef
+	if target == "" {
+		target = headSHA
+	}
+	if target == "" {
+		return nil, fmt.Errorf("create native git bundle: missing HEAD")
+	}
+	if syncedHead != "" {
+		target = syncedHead + ".." + target
+	}
+
+	out := filepath.Join(tmpDir, "restore.bundle")
+	cmd := exec.Command("git", "-C", repoPath, "bundle", "create", out, target)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		detail := strings.TrimSpace(string(output))
+		if detail == "" {
+			detail = err.Error()
+		}
+		return nil, fmt.Errorf("create native git bundle: %s", detail)
+	}
+	return os.ReadFile(out)
+}
+
+func formatCommitTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339)
 }
 
 func SHA256(payload []byte) string {
