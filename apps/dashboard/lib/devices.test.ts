@@ -132,7 +132,7 @@ describe("dashboard devices", () => {
   });
 
   it("revokes an owned active device idempotently and preserves the audit row", async () => {
-    const devices = installRevokeSql([
+    const revokeSql = installRevokeSql([
       {
         id: "00000000-0000-4000-8000-000000000101",
         userId: "00000000-0000-4000-8000-000000000001",
@@ -147,6 +147,8 @@ describe("dashboard devices", () => {
       },
     ]);
 
+    expect(summarizeFakeDevices(revokeSql.devices).trustedDeviceCount).toBe(2);
+
     const result = await revokeDashboardDevice(
       { id: "00000000-0000-4000-8000-000000000001" },
       "00000000-0000-4000-8000-000000000101",
@@ -160,15 +162,52 @@ describe("dashboard devices", () => {
         revoked: true,
       },
     });
-    expect(devices.get("00000000-0000-4000-8000-000000000101")).toBeDefined();
-    expect(devices.get("00000000-0000-4000-8000-000000000101")?.revokedAt).toBeTruthy();
-    expect(devices.get("00000000-0000-4000-8000-000000000102")?.revokedAt).toBeNull();
+    expect(revokeSql.devices.get("00000000-0000-4000-8000-000000000101")).toBeDefined();
+    expect(revokeSql.devices.get("00000000-0000-4000-8000-000000000101")?.revokedAt).toBeTruthy();
+    expect(revokeSql.devices.get("00000000-0000-4000-8000-000000000102")?.revokedAt).toBeNull();
+    expect(summarizeFakeDevices(revokeSql.devices).trustedDeviceCount).toBe(1);
+    expect(revokeSql.mutations).toBe(1);
 
     const second = await revokeDashboardDevice(
       { id: "00000000-0000-4000-8000-000000000001" },
       "00000000-0000-4000-8000-000000000101",
     );
     expect(second).toMatchObject({ ok: true, alreadyRevoked: true });
+    expect(revokeSql.mutations).toBe(1);
+  });
+
+  it("does not emit the ambiguous revoked_at SQL regression", async () => {
+    const revokeSql = installRevokeSql([
+      {
+        id: "00000000-0000-4000-8000-000000000111",
+        userId: "00000000-0000-4000-8000-000000000001",
+        name: "Piyushs-MacBook-Pro.local",
+        revokedAt: null,
+      },
+    ]);
+
+    await expect(
+      revokeDashboardDevice(
+        { id: "00000000-0000-4000-8000-000000000001" },
+        "00000000-0000-4000-8000-000000000111",
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      alreadyRevoked: false,
+      device: {
+        id: "00000000-0000-4000-8000-000000000111",
+        revoked: true,
+      },
+    });
+
+    expect(revokeSql.queries).toHaveLength(1);
+    const [query] = revokeSql.queries;
+    expect(query).toContain("target_device as");
+    expect(query).toContain("revoked_device as");
+    expect(query).toContain("d.revoked_at as previous_revoked_at");
+    expect(query).toContain("rd.revoked_at");
+    expect(query).not.toMatch(/\bcoalesce\s*\(\s*revoked_at\s*,\s*now\(\)\s*\)/i);
+    expect(findAmbiguousRevokedAtReferences(query)).toEqual([]);
   });
 
   it("rejects invalid UUIDs before touching the database", async () => {
@@ -217,7 +256,7 @@ describe("dashboard devices", () => {
   });
 
   it("uses the full UUID when duplicate hostnames are revoked", async () => {
-    const devices = installRevokeSql([
+    const revokeSql = installRevokeSql([
       {
         id: "00000000-0000-4000-8000-000000000301",
         userId: "00000000-0000-4000-8000-000000000001",
@@ -245,24 +284,11 @@ describe("dashboard devices", () => {
       ),
     ).resolves.toMatchObject({ ok: true });
 
-    expect(devices.get("00000000-0000-4000-8000-000000000301")?.revokedAt).toBeNull();
-    expect(devices.get("00000000-0000-4000-8000-000000000302")?.revokedAt).toBeTruthy();
-    expect(devices.get("00000000-0000-4000-8000-000000000303")?.revokedAt).toBeTruthy();
+    expect(revokeSql.devices.get("00000000-0000-4000-8000-000000000301")?.revokedAt).toBeNull();
+    expect(revokeSql.devices.get("00000000-0000-4000-8000-000000000302")?.revokedAt).toBeTruthy();
+    expect(revokeSql.devices.get("00000000-0000-4000-8000-000000000303")?.revokedAt).toBeTruthy();
 
-    const summary = buildDashboardDeviceSummary({
-      devices: [...devices.values()].map((device) => ({
-        id: device.id,
-        name: device.name,
-        lastActiveAt: null,
-        createdAt: "2026-06-29T00:00:00.000Z",
-        revokedAt: device.revokedAt,
-        status: device.revokedAt ? "revoked" : "active",
-      })),
-      deviceLimit: 2,
-      activeSessionCount: 1,
-      pendingApprovalCount: 0,
-    });
-
+    const summary = summarizeFakeDevices(revokeSql.devices);
     expect(summary.trustedDeviceCount).toBe(1);
     expect(summary.activeSessionCount).toBe(1);
   });
@@ -277,9 +303,20 @@ type FakeDeviceRow = {
 
 function installRevokeSql(rows: FakeDeviceRow[]) {
   const devices = new Map(rows.map((row) => [row.id, { ...row }]));
+  const state = {
+    devices,
+    mutations: 0,
+    queries: [] as string[],
+  };
   dbState.sql = vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
     const text = strings.join("?");
-    if (!text.includes("locked_device") || !text.includes("update devices")) {
+    state.queries.push(text);
+
+    if (/\bcoalesce\s*\(\s*revoked_at\s*,\s*now\(\)\s*\)/i.test(text)) {
+      throw new Error('column reference "revoked_at" is ambiguous');
+    }
+
+    if (!text.includes("target_device") || !text.includes("revoked_device") || !text.includes("update devices as d")) {
       throw new Error(`unexpected sql: ${text}`);
     }
 
@@ -291,6 +328,7 @@ function installRevokeSql(rows: FakeDeviceRow[]) {
     const wasRevoked = device.revokedAt !== null;
     if (!device.revokedAt) {
       device.revokedAt = "2026-06-29T09:00:00.000Z";
+      state.mutations += 1;
     }
 
     return [
@@ -301,5 +339,34 @@ function installRevokeSql(rows: FakeDeviceRow[]) {
       },
     ];
   });
-  return devices;
+  return state;
+}
+
+function summarizeFakeDevices(devices: Map<string, FakeDeviceRow>) {
+  return buildDashboardDeviceSummary({
+    devices: [...devices.values()].map((device) => ({
+      id: device.id,
+      name: device.name,
+      lastActiveAt: null,
+      createdAt: "2026-06-29T00:00:00.000Z",
+      revokedAt: device.revokedAt,
+      status: device.revokedAt ? "revoked" : "active",
+    })),
+    deviceLimit: 2,
+    activeSessionCount: 1,
+    pendingApprovalCount: 0,
+  });
+}
+
+function findAmbiguousRevokedAtReferences(query: string) {
+  return query
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.includes("revoked_at"))
+    .filter((line) => {
+      if (line.startsWith("set revoked_at =")) return false;
+      return !line.includes("d.revoked_at") &&
+        !line.includes("rd.revoked_at") &&
+        !line.includes("previous_revoked_at");
+    });
 }

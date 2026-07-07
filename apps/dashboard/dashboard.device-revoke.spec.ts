@@ -4,6 +4,7 @@ const routeState = vi.hoisted(() => ({
   session: null as unknown,
   account: null as unknown,
   revokeResult: null as unknown,
+  revokeError: null as unknown,
   revokeCalls: [] as Array<{ account: unknown; deviceId: string }>,
 }));
 
@@ -21,6 +22,9 @@ vi.mock("./lib/devices", async () => {
     ...actual,
     revokeDashboardDevice: vi.fn(async (account: unknown, deviceId: string) => {
       routeState.revokeCalls.push({ account, deviceId });
+      if (routeState.revokeError) {
+        throw routeState.revokeError;
+      }
       return routeState.revokeResult;
     }),
   };
@@ -66,6 +70,7 @@ describe("dashboard device revoke route", () => {
         revokedAt: "2026-06-29T09:00:00.000Z",
       },
     };
+    routeState.revokeError = null;
     routeState.revokeCalls = [];
   });
 
@@ -126,6 +131,29 @@ describe("dashboard device revoke route", () => {
       error: "DEVICE_NOT_FOUND",
       message: "Device not found.",
     });
+  });
+
+  it("returns a safe generic response when the database revoke fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    routeState.revokeError = new Error('column reference "revoked_at" is ambiguous');
+
+    const response = await postRevoke();
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({
+      ok: false,
+      error: "DEVICE_REVOKE_FAILED",
+      message: "Could not revoke this device.",
+    });
+    expect(JSON.stringify(body)).not.toContain("revoked_at");
+    expect(JSON.stringify(body)).not.toContain("ambiguous");
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[api:dashboard:devices:revoke]",
+      routeState.revokeError,
+    );
+
+    errorSpy.mockRestore();
   });
 
   it("treats already-revoked owned devices as idempotent success", async () => {

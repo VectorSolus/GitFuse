@@ -153,28 +153,36 @@ export async function revokeDashboardDevice(
     was_revoked: boolean;
   }[]>`
     with dashboard_user as (
-      select id
-      from users
-      where (${account.id ?? null}::uuid is not null and id = ${account.id ?? null})
-         or (${account.email ?? null}::text is not null and email = ${account.email ?? null})
-         or (${account.username ?? null}::text is not null and github_username = ${account.username ?? null})
-      order by updated_at desc
+      select u.id
+      from users as u
+      where (${account.id ?? null}::uuid is not null and u.id = ${account.id ?? null})
+         or (${account.email ?? null}::text is not null and u.email = ${account.email ?? null})
+         or (${account.username ?? null}::text is not null and u.github_username = ${account.username ?? null})
+      order by u.updated_at desc
       limit 1
     ),
-    locked_device as (
-      select devices.id, devices.revoked_at
-      from devices
-      join dashboard_user on dashboard_user.id = devices.user_id
-      where devices.id = ${deviceId}
+    target_device as (
+      select d.id,
+             d.revoked_at as previous_revoked_at
+      from devices as d
+      join dashboard_user as du on du.id = d.user_id
+      where d.id = ${deviceId}
       for update
+    ),
+    revoked_device as (
+      update devices as d
+      set revoked_at = now()
+      from target_device as td
+      where d.id = td.id
+        and td.previous_revoked_at is null
+      returning d.id,
+                d.revoked_at
     )
-    update devices
-    set revoked_at = coalesce(revoked_at, now())
-    from locked_device
-    where devices.id = locked_device.id
-    returning devices.id,
-              devices.revoked_at,
-              locked_device.revoked_at is not null as was_revoked
+    select td.id,
+           coalesce(rd.revoked_at, td.previous_revoked_at) as revoked_at,
+           td.previous_revoked_at is not null as was_revoked
+    from target_device as td
+    left join revoked_device as rd on rd.id = td.id
   `;
 
   if (!device) {

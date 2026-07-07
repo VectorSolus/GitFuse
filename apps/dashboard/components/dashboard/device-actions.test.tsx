@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -105,6 +107,28 @@ describe("DeviceActions", () => {
     expect(markup).toContain("#00000000");
     expect(markup).not.toContain(duplicateHostnameDevices[0].id);
     expect(markup).not.toContain("token");
+    expect(markup).not.toContain("gf-device-action-error");
+  });
+
+  it("unmounts the dropdown layer when the confirmation dialog is open", () => {
+    const markup = renderActions(duplicateHostnameDevices[0], {
+      menu: true,
+      dialog: true,
+    });
+
+    expect(markup.match(/role="dialog"/g)).toHaveLength(1);
+    expect(markup).toContain('aria-modal="true"');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).not.toContain('role="menu"');
+    expect(markup).not.toContain("gf-device-action-menu");
+  });
+
+  it("uses a body-level portal for the confirmation dialog in the browser", () => {
+    const source = readFileSync(new URL("./device-actions.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain('import { createPortal } from "react-dom"');
+    expect(source).toContain('typeof document === "undefined"');
+    expect(source).toContain("createPortal(dialog, document.body)");
   });
 
   it("builds revoke requests with the complete immutable UUID", () => {
