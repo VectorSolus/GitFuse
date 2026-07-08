@@ -13,8 +13,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const currentVersion = "0.1.0"
-
 type releaseInfo struct {
 	TagName string `json:"tag_name"`
 	Assets  []struct {
@@ -41,6 +39,7 @@ func runUpdate(ctx context.Context, cmd *cobra.Command) error {
 		return err
 	}
 	latest := strings.TrimPrefix(release.TagName, "v")
+	currentVersion := currentCLIVersion()
 	if !versionGreater(latest, currentVersion) {
 		fmt.Fprintf(cmd.OutOrStdout(), "gitfuse %s is already the latest version.\n", currentVersion)
 		return nil

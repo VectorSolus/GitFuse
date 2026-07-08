@@ -25,7 +25,16 @@ type authOptions struct {
 var authOpts authOptions
 
 var authCmd = &cobra.Command{
-	Use:   "auth",
+	Use:     "auth",
+	Short:   "Authenticate this device with gitfuse",
+	Example: "  gitfuse auth login\n  gitfuse auth login --headless\n  gitfuse auth",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runAuth(cmd.Context(), cmd, authOpts)
+	},
+}
+
+var authLoginCmd = &cobra.Command{
+	Use:   "login",
 	Short: "Authenticate this device with gitfuse",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runAuth(cmd.Context(), cmd, authOpts)
@@ -33,9 +42,10 @@ var authCmd = &cobra.Command{
 }
 
 func init() {
-	authCmd.Flags().BoolVar(&authOpts.headless, "headless", false, "print approval URL without opening a browser")
-	authCmd.Flags().StringVar(&authOpts.code, "code", "", "fixed auth code for tests")
-	_ = authCmd.Flags().MarkHidden("code")
+	authCmd.PersistentFlags().BoolVar(&authOpts.headless, "headless", false, "print approval URL without opening a browser")
+	authCmd.PersistentFlags().StringVar(&authOpts.code, "code", "", "fixed auth code for tests")
+	_ = authCmd.PersistentFlags().MarkHidden("code")
+	authCmd.AddCommand(authLoginCmd)
 	rootCmd.AddCommand(authCmd)
 }
 
@@ -82,7 +92,11 @@ func runOAuthAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) err
 		}
 	}
 
-	relayURL := relayBaseURL()
+	resolvedRelay, err := resolveRelayURL()
+	if err != nil {
+		return err
+	}
+	relayURL := resolvedRelay.URL
 	approvalBase := os.Getenv("GITFUSE_AUTH_URL")
 	if approvalBase == "" {
 		dashboardURL := strings.TrimRight(os.Getenv("GITFUSE_DASHBOARD_URL"), "/")

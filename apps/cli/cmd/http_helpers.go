@@ -14,10 +14,11 @@ import (
 )
 
 func relayBaseURL() string {
-	if base := os.Getenv("GITFUSE_RELAY_URL"); base != "" {
-		return strings.TrimRight(base, "/")
+	resolved, err := resolveRelayURL()
+	if err != nil {
+		return ""
 	}
-	return "http://localhost:8787"
+	return resolved.URL
 }
 
 func deviceToken() string {
@@ -34,7 +35,7 @@ func deviceToken() string {
 func doAuthorizedRequest(req *http.Request) ([]byte, int, error) {
 	token := deviceToken()
 	if token == "" {
-		return nil, 0, fmt.Errorf("not authenticated; run 'gitfuse auth'")
+		return nil, 0, fmt.Errorf(notAuthenticatedMessage)
 	}
 	req.Header.Set("authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)

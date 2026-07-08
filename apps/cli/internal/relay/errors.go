@@ -45,7 +45,7 @@ func RenderOverLimit(raw []byte) string {
 }
 
 func RenderAuthExpired() string {
-	return "✗ Session expired.\n  Run 'gitfuse auth' to re-authenticate.\n  Your local changes are safe — nothing was lost."
+	return "✗ Session expired.\n  Run 'gitfuse auth login' to re-authenticate.\n  Your local changes are safe — nothing was lost."
 }
 
 func RenderBundleRejected(raw []byte) string {

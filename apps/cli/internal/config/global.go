@@ -7,14 +7,20 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"strings"
 	"time"
 )
 
 const globalDirName = ".gitfuse"
 
 func GlobalDir() (string, error) {
+	if override, ok := os.LookupEnv("GITFUSE_CONFIG_DIR"); ok {
+		return normalizeGlobalDirOverride("GITFUSE_CONFIG_DIR", override)
+	}
+
 	if override := os.Getenv("GITFUSE_HOME"); override != "" {
-		return filepath.Clean(override), nil
+		return normalizeGlobalDirOverride("GITFUSE_HOME", override)
 	}
 
 	home, err := os.UserHomeDir()
@@ -22,6 +28,22 @@ func GlobalDir() (string, error) {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
 	return filepath.Join(home, globalDirName), nil
+}
+
+func normalizeGlobalDirOverride(name, value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", fmt.Errorf("%s must not be empty", name)
+	}
+	cleaned := filepath.Clean(trimmed)
+	if filepath.IsAbs(cleaned) {
+		return cleaned, nil
+	}
+	absolute, err := filepath.Abs(cleaned)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s: %w", name, err)
+	}
+	return filepath.Clean(absolute), nil
 }
 
 func EnsureGlobalDir() (string, error) {
@@ -32,10 +54,45 @@ func EnsureGlobalDir() (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create gitfuse config directory: %w", err)
 	}
-	if err := os.Chmod(dir, 0o700); err != nil {
+	if err := securePath(dir, 0o700); err != nil {
 		return "", fmt.Errorf("secure gitfuse config directory: %w", err)
 	}
 	return dir, nil
+}
+
+func globalPath(name string) (string, error) {
+	dir, err := GlobalDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, name), nil
+}
+
+func ensuredGlobalPath(name string) (string, error) {
+	dir, err := EnsureGlobalDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, name), nil
+}
+
+func securePath(path string, mode os.FileMode) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	return os.Chmod(path, mode)
+}
+
+func writeGlobalFileAtomic(path string, content []byte, mode os.FileMode) error {
+	tmp := fmt.Sprintf("%s.%d.tmp", path, time.Now().UnixNano())
+	if err := os.WriteFile(tmp, content, mode); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return securePath(path, mode)
 }
 
 type Credentials struct {
@@ -47,22 +104,29 @@ type Credentials struct {
 }
 
 func CredentialsPath() (string, error) {
-	dir, err := EnsureGlobalDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "credentials"), nil
+	return globalPath("credentials")
 }
 
 func DeviceIDPath() (string, error) {
-	dir, err := EnsureGlobalDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "device_id"), nil
+	return globalPath("device_id")
 }
 
 func EnsureDeviceID() (string, error) {
+	deviceID, err := ReadDeviceID()
+	if err == nil {
+		return deviceID, nil
+	}
+	if !os.IsNotExist(err) {
+		return "", err
+	}
+	deviceID, err = GenerateDeviceID()
+	if err != nil {
+		return "", err
+	}
+	return deviceID, WriteDeviceID(deviceID)
+}
+
+func ReadDeviceID() (string, error) {
 	path, err := DeviceIDPath()
 	if err != nil {
 		return "", err
@@ -72,34 +136,38 @@ func EnsureDeviceID() (string, error) {
 		if deviceID != "" {
 			return deviceID, nil
 		}
+		return "", fmt.Errorf("device id file is empty")
+	} else {
+		return "", err
 	}
+}
+
+func GenerateDeviceID() (string, error) {
 	raw := make([]byte, 16)
 	if _, err := rand.Read(raw); err != nil {
 		return "", fmt.Errorf("generate device id: %w", err)
 	}
 	raw[6] = (raw[6] & 0x0f) | 0x40
 	raw[8] = (raw[8] & 0x3f) | 0x80
-	deviceID := fmt.Sprintf("%x-%x-%x-%x-%x", raw[0:4], raw[4:6], raw[6:8], raw[8:10], raw[10:16])
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(deviceID+"\n"), 0o600); err != nil {
-		return "", fmt.Errorf("write device id temp file: %w", err)
+	return fmt.Sprintf("%x-%x-%x-%x-%x", raw[0:4], raw[4:6], raw[6:8], raw[8:10], raw[10:16]), nil
+}
+
+func WriteDeviceID(deviceID string) error {
+	path, err := ensuredGlobalPath("device_id")
+	if err != nil {
+		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return "", fmt.Errorf("commit device id file: %w", err)
+	if err := writeGlobalFileAtomic(path, []byte(strings.TrimSpace(deviceID)+"\n"), 0o600); err != nil {
+		return fmt.Errorf("write device id file: %w", err)
 	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return "", fmt.Errorf("secure device id file: %w", err)
-	}
-	return deviceID, nil
+	return nil
 }
 
 func WriteCredentials(credentials Credentials) (string, error) {
-	path, err := CredentialsPath()
+	path, err := ensuredGlobalPath("credentials")
 	if err != nil {
 		return "", err
 	}
-	tmp := path + ".tmp"
 	content := fmt.Sprintf("[account]\nusername = %q\ntoken = %q\ndevice_id = %q\nkey = %q\nregistered_at = %q\n",
 		credentials.Username,
 		credentials.Token,
@@ -107,15 +175,8 @@ func WriteCredentials(credentials Credentials) (string, error) {
 		credentials.Key,
 		credentials.RegisteredAt.UTC().Format(time.RFC3339),
 	)
-	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
+	if err := writeGlobalFileAtomic(path, []byte(content), 0o600); err != nil {
 		return "", fmt.Errorf("write credentials temp file: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return "", fmt.Errorf("commit credentials file: %w", err)
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return "", fmt.Errorf("secure credentials file: %w", err)
 	}
 	return path, nil
 }
@@ -157,11 +218,7 @@ type RepositoryRegistry struct {
 }
 
 func RepositoryRegistryPath() (string, error) {
-	dir, err := EnsureGlobalDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "repositories.json"), nil
+	return globalPath("repositories.json")
 }
 
 func ReadRepositoryRegistry() (RepositoryRegistry, error) {
@@ -187,7 +244,7 @@ func ReadRepositoryRegistry() (RepositoryRegistry, error) {
 }
 
 func WriteRepositoryRegistry(registry RepositoryRegistry) (string, error) {
-	path, err := RepositoryRegistryPath()
+	path, err := ensuredGlobalPath("repositories.json")
 	if err != nil {
 		return "", err
 	}
@@ -198,16 +255,8 @@ func WriteRepositoryRegistry(registry RepositoryRegistry) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("encode repository registry: %w", err)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(content, '\n'), 0o600); err != nil {
+	if err := writeGlobalFileAtomic(path, append(content, '\n'), 0o600); err != nil {
 		return "", fmt.Errorf("write repository registry temp file: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return "", fmt.Errorf("commit repository registry file: %w", err)
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return "", fmt.Errorf("secure repository registry file: %w", err)
 	}
 	return path, nil
 }
@@ -245,30 +294,70 @@ type ActiveRepo struct {
 	Path string
 }
 
-func ActiveRepoPath() (string, error) {
-	dir, err := EnsureGlobalDir()
+type GlobalConfig struct {
+	RelayURL string `json:"relayUrl,omitempty"`
+}
+
+func GlobalConfigPath() (string, error) {
+	return globalPath("config.json")
+}
+
+func ReadGlobalConfig() (GlobalConfig, error) {
+	path, err := GlobalConfigPath()
+	if err != nil {
+		return GlobalConfig{}, err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return GlobalConfig{}, nil
+		}
+		return GlobalConfig{}, err
+	}
+	var cfg GlobalConfig
+	if err := json.Unmarshal(content, &cfg); err != nil {
+		return GlobalConfig{}, fmt.Errorf("decode global config: %w", err)
+	}
+	return cfg, nil
+}
+
+func WriteGlobalConfig(cfg GlobalConfig) (string, error) {
+	path, err := ensuredGlobalPath("config.json")
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "active_repo"), nil
+	content, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("encode global config: %w", err)
+	}
+	if err := writeGlobalFileAtomic(path, append(content, '\n'), 0o600); err != nil {
+		return "", fmt.Errorf("write global config: %w", err)
+	}
+	return path, nil
+}
+
+func PersistRelayURL(relayURL string) error {
+	cfg, err := ReadGlobalConfig()
+	if err != nil {
+		return err
+	}
+	cfg.RelayURL = strings.TrimSpace(relayURL)
+	_, err = WriteGlobalConfig(cfg)
+	return err
+}
+
+func ActiveRepoPath() (string, error) {
+	return globalPath("active_repo")
 }
 
 func WriteActiveRepo(repo ActiveRepo) (string, error) {
-	path, err := ActiveRepoPath()
+	path, err := ensuredGlobalPath("active_repo")
 	if err != nil {
 		return "", err
 	}
-	tmp := path + ".tmp"
 	content := fmt.Sprintf("[repo]\nname = %q\npath = %q\n", repo.Name, repo.Path)
-	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
+	if err := writeGlobalFileAtomic(path, []byte(content), 0o600); err != nil {
 		return "", fmt.Errorf("write active repo temp file: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return "", fmt.Errorf("commit active repo file: %w", err)
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return "", fmt.Errorf("secure active repo file: %w", err)
 	}
 	return path, nil
 }
