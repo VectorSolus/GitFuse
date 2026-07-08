@@ -3,9 +3,26 @@
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 
+import { INSTALL_GUIDES, installCommandRows } from "@/lib/install-commands";
+
 const SoftAurora = dynamic(() => import("@/components/effects/SoftAurora"), {
   ssr: false,
 }) as ComponentType<any>;
+
+const quickStartCommands = INSTALL_GUIDES.macos.commands.map((code, index) => ({
+  label: [
+    "Install on macOS",
+    "Authenticate this device",
+    "Track the current repository",
+    "Sync local commits",
+  ][index],
+  code,
+}));
+
+const installationCommands = installCommandRows().map((guide) => ({
+  label: guide.label + " install",
+  code: guide.commands[0],
+}));
 
 const commandSections = [
   {
@@ -13,24 +30,14 @@ const commandSections = [
     title: "Quick start",
     description:
       "Install GitFuse, authenticate your device, add your current repository, and sync your first local commits.",
-    commands: [
-      {
-        label: "Install on macOS",
-        code: "brew install gitfuse",
-      },
-      {
-        label: "Authenticate this device",
-        code: "gitfuse auth login",
-      },
-      {
-        label: "Track the current repository",
-        code: "gitfuse add .",
-      },
-      {
-        label: "Sync local commits",
-        code: "gitfuse sync",
-      },
-    ],
+    commands: quickStartCommands,
+  },
+  {
+    id: "installation",
+    title: "Installation",
+    description:
+      "Install GitFuse with the public package-manager command for your platform.",
+    commands: installationCommands,
   },
   {
     id: "auth",
@@ -157,6 +164,7 @@ const commandSections = [
 const navItems = [
   { label: "Introduction", href: "#introduction" },
   { label: "Quick start", href: "#quick-start" },
+  { label: "Installation", href: "#installation" },
   { label: "Authentication", href: "#auth" },
   { label: "Repositories", href: "#repositories" },
   { label: "Sync workflow", href: "#sync" },

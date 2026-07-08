@@ -4,51 +4,11 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 import type { ComponentType } from "react";
 
+import { INSTALL_GUIDES, type InstallGuideKey } from "@/lib/install-commands";
+
 const SoftAurora = dynamic(() => import("@/components/effects/SoftAurora"), {
   ssr: false,
 }) as ComponentType<any>;
-
-type InstallKey = "macos" | "windows" | "linux";
-
-const installGuides: Record<
-  InstallKey,
-  {
-    label: string;
-    shell: string;
-    lines: string[];
-  }
-> = {
-  macos: {
-    label: "macOS",
-    shell: "zsh",
-    lines: [
-      "brew install gitfuse",
-      "gitfuse auth login",
-      "gitfuse add .",
-      "gitfuse sync",
-    ],
-  },
-  windows: {
-    label: "Windows",
-    shell: "PowerShell",
-    lines: [
-      "winget install gitfuse",
-      "gitfuse auth login",
-      "gitfuse add .",
-      "gitfuse sync",
-    ],
-  },
-  linux: {
-    label: "Linux",
-    shell: "bash / zsh",
-    lines: [
-      "curl -fsSL https://install.gitfuse.dev | sh",
-      "gitfuse auth login",
-      "gitfuse add .",
-      "gitfuse sync",
-    ],
-  },
-};
 
 const features = [
   {
@@ -77,9 +37,9 @@ const comparisonRows = [
 ];
 
 export default function HomePage() {
-  const [selectedInstall, setSelectedInstall] = useState<InstallKey>("macos");
+  const [selectedInstall, setSelectedInstall] = useState<InstallGuideKey>("macos");
   const [heroEmail, setHeroEmail] = useState("");
-  const currentGuide = installGuides[selectedInstall];
+  const currentGuide = INSTALL_GUIDES[selectedInstall];
 
   return (
     <main className="gf-page">
@@ -337,14 +297,14 @@ export default function HomePage() {
         </div>
 
         <div className="gf-install-tabs">
-          {(Object.keys(installGuides) as InstallKey[]).map((key) => (
+          {(Object.keys(INSTALL_GUIDES) as InstallGuideKey[]).map((key) => (
             <button
               key={key}
               type="button"
               className={selectedInstall === key ? "active" : ""}
               onClick={() => setSelectedInstall(key)}
             >
-              {installGuides[key].label}
+              {INSTALL_GUIDES[key].label}
             </button>
           ))}
         </div>
@@ -361,7 +321,7 @@ export default function HomePage() {
 
           <pre>
             <code>
-              {currentGuide.lines.map((line) => (
+              {currentGuide.commands.map((line) => (
                 <span key={line}>
                   <em>$</em> {line}
                 </span>
