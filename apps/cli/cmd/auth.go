@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -19,6 +20,7 @@ import (
 
 type authOptions struct {
 	headless bool
+	oauth    bool
 	code     string
 }
 
@@ -43,6 +45,7 @@ var authLoginCmd = &cobra.Command{
 
 func init() {
 	authCmd.PersistentFlags().BoolVar(&authOpts.headless, "headless", false, "print approval URL without opening a browser")
+	authCmd.PersistentFlags().BoolVar(&authOpts.oauth, "oauth", false, "authenticate with the browser OAuth flow")
 	authCmd.PersistentFlags().StringVar(&authOpts.code, "code", "", "fixed auth code for tests")
 	_ = authCmd.PersistentFlags().MarkHidden("code")
 	authCmd.AddCommand(authLoginCmd)
@@ -50,36 +53,24 @@ func init() {
 }
 
 func runAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) error {
-	if !opts.headless {
-		reader := bufio.NewReader(cmd.InOrStdin())
-		existing, err := promptLine(cmd, reader, "Do you already have a gitfuse account? (Y/N) ")
-		if err != nil {
-			return err
-		}
-		switch strings.ToLower(strings.TrimSpace(existing)) {
-		case "n", "no":
-			fmt.Fprintln(cmd.OutOrStdout(), "Create your gitfuse account at https://gitfuse.dev/signup, then run gitfuse auth again.")
-			return nil
-		case "y", "yes":
-		default:
-			return fmt.Errorf("enter Y or N")
-		}
-
-		method, err := promptLine(cmd, reader, "Sign in method (Email/GitHub/Google): ")
-		if err != nil {
-			return err
-		}
-		switch strings.ToLower(strings.TrimSpace(method)) {
-		case "email":
-			return fmt.Errorf("email/password CLI auth is not available because the relay has no existing credentials token route; use GitHub or Google OAuth for this version")
-		case "github", "google":
-			return runOAuthAuth(ctx, cmd, opts)
-		default:
-			return fmt.Errorf("choose Email, GitHub, or Google")
-		}
+	if opts.oauth || opts.headless {
+		return runOAuthAuth(ctx, cmd, opts)
 	}
 
-	return runOAuthAuth(ctx, cmd, opts)
+	reader := bufio.NewReader(cmd.InOrStdin())
+	existing, err := promptLine(cmd, reader, "Do you already have a gitfuse account? (Y/N) ")
+	if err != nil {
+		return err
+	}
+	switch strings.ToLower(strings.TrimSpace(existing)) {
+	case "n", "no":
+		fmt.Fprintln(cmd.OutOrStdout(), "Create your gitfuse account at https://gitfuse.dev/signup, then run gitfuse auth again.")
+		return nil
+	case "y", "yes":
+		return runPairingPinAuth(ctx, cmd, reader, opts)
+	default:
+		return fmt.Errorf("enter Y or N")
+	}
 }
 
 func runOAuthAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) error {
@@ -110,7 +101,7 @@ func runOAuthAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) err
 	if deviceName == "" {
 		deviceName = "gitfuse-device"
 	}
-	deviceID, err := config.EnsureDeviceID()
+	deviceID, err := currentDeviceID()
 	if err != nil {
 		return err
 	}
@@ -142,17 +133,11 @@ func runOAuthAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) err
 			return err
 		}
 		if result.Approved {
-			key, err := gfcrypto.GenerateIdentityString()
-			if err != nil {
-				return err
-			}
-			if _, err := config.WriteCredentials(config.Credentials{
-				Username:     result.Username,
-				Token:        result.Token,
-				DeviceID:     firstNonEmpty(result.DeviceID, deviceID),
-				Key:          key,
-				RegisteredAt: time.Now(),
-			}); err != nil {
+			if err := storeAuthCredentials(deviceAuthResponse{
+				Token:    result.Token,
+				Username: result.Username,
+				DeviceID: firstNonEmpty(result.DeviceID, deviceID),
+			}, relayURL); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "✓ Device authenticated.")
@@ -164,6 +149,90 @@ func runOAuthAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) err
 		case <-time.After(pollInterval):
 		}
 	}
+}
+
+func runPairingPinAuth(ctx context.Context, cmd *cobra.Command, reader *bufio.Reader, opts authOptions) error {
+	email, err := promptLine(cmd, reader, "Enter your account email: ")
+	if err != nil {
+		return err
+	}
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return fmt.Errorf("email is required")
+	}
+
+	deviceName, deviceID, err := currentDeviceInfo()
+	if err != nil {
+		return err
+	}
+
+	for {
+		pin, err := promptLine(cmd, reader, "Enter your Pairing PIN: ")
+		if err != nil {
+			return err
+		}
+
+		result, err := requestPairingPinAuth(ctx, email, pin, deviceName, deviceID)
+		if err != nil {
+			return err
+		}
+		if result.Token != "" {
+			if err := storeAuthCredentials(result.authResponse(), dashboardRelayURL()); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "✓ Device authenticated.")
+			return nil
+		}
+		if result.Error == "rate_limited" {
+			return fmt.Errorf("too many attempts from this network. Try again in %d seconds", result.RetryAfterSeconds)
+		}
+		if result.SuggestFallback {
+			fmt.Fprintln(cmd.OutOrStdout(), "Too many incorrect attempts. Let's verify a different way:")
+			return runFallbackAuth(ctx, cmd, reader, email, opts)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Invalid email or PIN. Try again.")
+	}
+}
+
+func runFallbackAuth(ctx context.Context, cmd *cobra.Command, reader *bufio.Reader, email string, opts authOptions) error {
+	fmt.Fprintln(cmd.OutOrStdout(), "[1] Email OTP  [2] GitHub  [3] Google")
+	choice, err := promptLine(cmd, reader, "Choose a method: ")
+	if err != nil {
+		return err
+	}
+
+	switch strings.TrimSpace(choice) {
+	case "1":
+		return runEmailOTPFallback(ctx, cmd, reader, email)
+	case "2", "3":
+		return runOAuthAuth(ctx, cmd, authOptions{headless: opts.headless})
+	default:
+		return fmt.Errorf("choose 1, 2, or 3")
+	}
+}
+
+func runEmailOTPFallback(ctx context.Context, cmd *cobra.Command, reader *bufio.Reader, email string) error {
+	if err := requestCliOTP(ctx, email); err != nil {
+		return err
+	}
+
+	code, err := promptLine(cmd, reader, "Enter the code sent to your email: ")
+	if err != nil {
+		return err
+	}
+	deviceName, deviceID, err := currentDeviceInfo()
+	if err != nil {
+		return err
+	}
+	result, err := verifyCliOTP(ctx, email, code, deviceName, deviceID)
+	if err != nil {
+		return err
+	}
+	if err := storeAuthCredentials(result, dashboardRelayURL()); err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), "✓ Device authenticated.")
+	return nil
 }
 
 func promptLine(cmd *cobra.Command, reader *bufio.Reader, prompt string) (string, error) {
@@ -180,6 +249,29 @@ type pollResponse struct {
 	Token    string `json:"token"`
 	Username string `json:"username"`
 	DeviceID string `json:"deviceId"`
+}
+
+type deviceAuthResponse struct {
+	Token    string `json:"token"`
+	Username string `json:"username"`
+	DeviceID string `json:"deviceId"`
+}
+
+type cliPairResponse struct {
+	Token             string `json:"token"`
+	Username          string `json:"username"`
+	DeviceID          string `json:"deviceId"`
+	Error             string `json:"error"`
+	SuggestFallback   bool   `json:"suggest_fallback"`
+	RetryAfterSeconds int    `json:"retry_after_seconds"`
+}
+
+func (result cliPairResponse) authResponse() deviceAuthResponse {
+	return deviceAuthResponse{
+		Token:    result.Token,
+		Username: result.Username,
+		DeviceID: result.DeviceID,
+	}
 }
 
 func pollAuth(ctx context.Context, relayURL, code string) (pollResponse, error) {
@@ -200,6 +292,81 @@ func pollAuth(ctx context.Context, relayURL, code string) (pollResponse, error) 
 		return result, err
 	}
 	return result, nil
+}
+
+func requestPairingPinAuth(ctx context.Context, email, pin, deviceName, deviceID string) (cliPairResponse, error) {
+	var result cliPairResponse
+	status, err := postDashboardJSON(ctx, "/api/auth/cli-pair", map[string]string{
+		"email":      email,
+		"pin":        pin,
+		"deviceName": deviceName,
+		"deviceId":   deviceID,
+	}, &result)
+	if err != nil {
+		return result, err
+	}
+	if status >= 200 && status < 300 {
+		if result.Token == "" {
+			return result, fmt.Errorf("pairing succeeded without a device token")
+		}
+		return result, nil
+	}
+	if status == http.StatusUnauthorized && result.Error == "invalid_credentials" {
+		return result, nil
+	}
+	if status == http.StatusTooManyRequests && result.Error == "rate_limited" {
+		return result, nil
+	}
+	return result, fmt.Errorf("pairing auth failed with status %d", status)
+}
+
+func requestCliOTP(ctx context.Context, email string) error {
+	var result struct {
+		Sent  bool   `json:"sent"`
+		Error string `json:"error"`
+	}
+	status, err := postDashboardJSON(ctx, "/api/auth/cli-otp/request", map[string]string{
+		"email": email,
+	}, &result)
+	if err != nil {
+		return err
+	}
+	if status >= 200 && status < 300 && result.Sent {
+		return nil
+	}
+	if result.Error != "" {
+		return fmt.Errorf("email OTP request failed: %s", result.Error)
+	}
+	return fmt.Errorf("email OTP request failed with status %d", status)
+}
+
+func verifyCliOTP(ctx context.Context, email, code, deviceName, deviceID string) (deviceAuthResponse, error) {
+	var result struct {
+		Token    string `json:"token"`
+		Username string `json:"username"`
+		DeviceID string `json:"deviceId"`
+		Error    string `json:"error"`
+	}
+	status, err := postDashboardJSON(ctx, "/api/auth/cli-otp/verify", map[string]string{
+		"email":      email,
+		"code":       code,
+		"deviceName": deviceName,
+		"deviceId":   deviceID,
+	}, &result)
+	if err != nil {
+		return deviceAuthResponse{}, err
+	}
+	if status >= 200 && status < 300 && result.Token != "" {
+		return deviceAuthResponse{
+			Token:    result.Token,
+			Username: result.Username,
+			DeviceID: result.DeviceID,
+		}, nil
+	}
+	if result.Error != "" {
+		return deviceAuthResponse{}, fmt.Errorf("email OTP verification failed: %s", result.Error)
+	}
+	return deviceAuthResponse{}, fmt.Errorf("email OTP verification failed with status %d", status)
 }
 
 func postJSON(ctx context.Context, url string, payload any, out any) error {
@@ -224,6 +391,94 @@ func postJSON(ctx context.Context, url string, payload any, out any) error {
 		return json.NewDecoder(response.Body).Decode(out)
 	}
 	return nil
+}
+
+func postDashboardJSON(ctx context.Context, path string, payload any, out any) (int, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, dashboardBaseURL()+path, bytes.NewReader(body))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("content-type", "application/json")
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+	responseBody, _ := io.ReadAll(response.Body)
+	if len(responseBody) > 0 && out != nil {
+		if err := json.Unmarshal(responseBody, out); err != nil {
+			return response.StatusCode, err
+		}
+	}
+	return response.StatusCode, nil
+}
+
+func dashboardBaseURL() string {
+	if base := os.Getenv("GITFUSE_DASHBOARD_URL"); base != "" {
+		return strings.TrimRight(base, "/")
+	}
+	return "http://localhost:3000"
+}
+
+func currentDeviceInfo() (string, string, error) {
+	deviceName, _ := os.Hostname()
+	if deviceName == "" {
+		deviceName = "gitfuse-device"
+	}
+	deviceID, err := currentDeviceID()
+	if err != nil {
+		return "", "", err
+	}
+	return deviceName, deviceID, nil
+}
+
+func currentDeviceID() (string, error) {
+	deviceID, err := config.ReadDeviceID()
+	if err == nil {
+		return deviceID, nil
+	}
+	if !os.IsNotExist(err) {
+		return "", err
+	}
+	return config.GenerateDeviceID()
+}
+
+func storeAuthCredentials(result deviceAuthResponse, relayURL string) error {
+	key, err := gfcrypto.GenerateIdentityString()
+	if err != nil {
+		return err
+	}
+	if relayURL != "" {
+		if err := config.PersistRelayURL(relayURL); err != nil {
+			return err
+		}
+	}
+	_, err = config.WriteCredentials(config.Credentials{
+		Username:     result.Username,
+		Token:        result.Token,
+		DeviceID:     result.DeviceID,
+		Key:          key,
+		RegisteredAt: time.Now(),
+	})
+	if err != nil {
+		return err
+	}
+	if result.DeviceID != "" {
+		return config.WriteDeviceID(result.DeviceID)
+	}
+	return nil
+}
+
+func dashboardRelayURL() string {
+	resolved, err := resolveRelayURL()
+	if err != nil {
+		return ""
+	}
+	return resolved.URL
 }
 
 func generateCode() (string, error) {

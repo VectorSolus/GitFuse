@@ -13,14 +13,6 @@ import (
 	"github.com/gitfuse/gitfuse/apps/cli/internal/relay"
 )
 
-func relayBaseURL() string {
-	resolved, err := resolveRelayURL()
-	if err != nil {
-		return ""
-	}
-	return resolved.URL
-}
-
 func deviceToken() string {
 	if token := os.Getenv("GITFUSE_TEST_TOKEN"); token != "" {
 		return token
@@ -48,8 +40,12 @@ func doAuthorizedRequest(req *http.Request) ([]byte, int, error) {
 		return body, resp.StatusCode, errors.New(relay.RenderAuthExpired())
 	}
 	if resp.StatusCode == http.StatusForbidden && strings.Contains(string(body), "device_limit_reached") {
-		limitsReq, reqErr := http.NewRequestWithContext(req.Context(), http.MethodGet, relayBaseURL()+"/v1/account/limits", nil)
+		relayURL, reqErr := relayBaseURLOrError()
 		if reqErr == nil {
+			limitsReq, reqErr := http.NewRequestWithContext(req.Context(), http.MethodGet, relayURL+"/v1/account/limits", nil)
+			if reqErr != nil {
+				return body, resp.StatusCode, errors.New("You're on the Free tier and have reached the device limit. Upgrade at gitfuse.dev/upgrade to add more devices.")
+			}
 			if limits, limitsErr := loadAccountLimitsFromRequest(limitsReq, token); limitsErr == nil {
 				return body, resp.StatusCode, errors.New(renderDeviceLimitMessage(limits))
 			}
