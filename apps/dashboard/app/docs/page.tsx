@@ -1,241 +1,232 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import type { ComponentType } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 import { INSTALL_GUIDES, installCommandRows } from "@/lib/install-commands";
 
-const SoftAurora = dynamic(() => import("@/components/effects/SoftAurora"), {
-  ssr: false,
-}) as ComponentType<any>;
+const sections = [
+  {
+    id: "introduction",
+    label: "Introduction",
+  },
+  {
+    id: "quick-start",
+    label: "Quick start",
+  },
+  {
+    id: "installation",
+    label: "Installation",
+  },
+  {
+    id: "authentication",
+    label: "Authentication",
+  },
+  {
+    id: "repositories",
+    label: "Repositories",
+  },
+  {
+    id: "sync-workflow",
+    label: "Sync workflow",
+  },
+  {
+    id: "status",
+    label: "Status",
+  },
+  {
+    id: "auto-sync",
+    label: "Auto sync",
+  },
+];
 
-const quickStartCommands = INSTALL_GUIDES.macos.commands.map((code, index) => ({
+const quickStartCommands = INSTALL_GUIDES.macos.commands.map((command, index) => ({
   label: [
-    "Install on macOS",
-    "Authenticate this device",
-    "Track the current repository",
-    "Sync local commits",
+    "Install the CLI",
+    "Authenticate your device",
+    "Track current repository",
+    "Sync private commits",
   ][index],
-  code,
+  command,
 }));
 
 const installationCommands = installCommandRows().map((guide) => ({
-  label: guide.label + " install",
-  code: guide.commands[0],
+  label: `${guide.label} install`,
+  command: guide.commands[0],
 }));
 
-const commandSections = [
+const commandGroups = [
   {
     id: "quick-start",
-    title: "Quick start",
-    description:
-      "Install GitFuse, authenticate your device, add your current repository, and sync your first local commits.",
+    eyebrow: "Quick start",
+    title: "Set up GitFuse in four commands.",
+    body: "Install the CLI, authenticate your device, add the current repository, and sync your first local commit bundle.",
     commands: quickStartCommands,
   },
   {
     id: "installation",
-    title: "Installation",
-    description:
-      "Install GitFuse with the public package-manager command for your platform.",
+    eyebrow: "Installation",
+    title: "Install with the public platform commands.",
+    body: "These commands are the public contract. External Homebrew and Winget acceptance, DNS, and endpoint publication must be verified separately before they are described as live.",
     commands: installationCommands,
   },
   {
-    id: "auth",
-    title: "Authentication",
-    description:
-      "GitFuse uses GitHub for authentication, but your GitFuse dashboard account and sync workspace remain independent.",
+    id: "authentication",
+    eyebrow: "Authentication",
+    title: "Connect a machine to your GitFuse workspace.",
+    body: "Authentication is GitHub or Google based, but your GitFuse dashboard account, devices, and sync history remain separate.",
     commands: [
       {
-        label: "Start login flow",
-        code: "gitfuse auth login",
+        label: "Start auth flow",
+        command: "gitfuse auth login",
       },
       {
-        label: "Show current account",
-        code: "gitfuse auth status",
+        label: "Show current identity",
+        command: "gitfuse auth whoami",
       },
       {
-        label: "Logout from this device",
-        code: "gitfuse auth logout",
+        label: "Remove local session",
+        command: "gitfuse auth logout",
       },
     ],
   },
   {
     id: "repositories",
-    title: "Repositories",
-    description:
-      "Register repositories into your GitFuse workspace and switch between them without changing directories.",
+    eyebrow: "Repositories",
+    title: "Choose which repositories GitFuse should track.",
+    body: "A repository must be explicitly added before local commits can be bundled and moved through the private relay.",
     commands: [
       {
         label: "Add current repository",
-        code: "gitfuse add .",
-      },
-      {
-        label: "Add repository by path",
-        code: "gitfuse add ~/Projects/api-gateway",
+        command: "gitfuse add .",
       },
       {
         label: "List tracked repositories",
-        code: "gitfuse repos",
+        command: "gitfuse repo list",
       },
       {
-        label: "Use a repository context",
-        code: "gitfuse use api-gateway",
-      },
-      {
-        label: "Stop tracking a repository",
-        code: "gitfuse forget api-gateway",
+        label: "Remove repository",
+        command: "gitfuse repo remove <repo>",
       },
     ],
   },
   {
-    id: "sync",
-    title: "Sync workflow",
-    description:
-      "Sync your local commit objects to the private relay and pull them on another device when you continue work.",
+    id: "sync-workflow",
+    eyebrow: "Sync workflow",
+    title: "Move work in progress without publishing it.",
+    body: "Sync from one machine, then pull on another machine to continue with the same local history.",
     commands: [
       {
-        label: "Sync all unsynced local commits",
-        code: "gitfuse sync",
+        label: "Create private bundle",
+        command: "gitfuse sync",
       },
       {
-        label: "Pull synced commits on another device",
-        code: "gitfuse pull",
+        label: "Pull synced commits",
+        command: "gitfuse pull",
       },
       {
-        label: "Sync a commit range",
-        code: "gitfuse sync HEAD~3..HEAD",
-      },
-      {
-        label: "Sync every tracked repository",
-        code: "gitfuse sync --all",
-      },
-      {
-        label: "Pull every tracked repository",
-        code: "gitfuse pull --all",
+        label: "Rebase after pulling",
+        command: "gitfuse rebase-sync",
       },
     ],
   },
   {
     id: "status",
-    title: "Status and history",
-    description:
-      "Inspect what has synced, what is waiting on the relay, and which device last updated a repository.",
+    eyebrow: "Status",
+    title: "Inspect repository and relay state.",
+    body: "Use status commands to understand what is tracked, what is pending, and what has already been moved.",
     commands: [
       {
-        label: "Show active repository status",
-        code: "gitfuse status",
+        label: "Workspace status",
+        command: "gitfuse status",
       },
       {
-        label: "Show all repository states",
-        code: "gitfuse status --all",
+        label: "Recent relay history",
+        command: "gitfuse history",
       },
       {
-        label: "Show sync history",
-        code: "gitfuse log",
-      },
-      {
-        label: "Show sync history for one repository",
-        code: "gitfuse log api-gateway",
+        label: "Connected devices",
+        command: "gitfuse devices",
       },
     ],
   },
   {
     id: "auto-sync",
-    title: "Auto sync",
-    description:
-      "Use auto sync when you want GitFuse to sync quietly after local commits are created.",
+    eyebrow: "Auto sync",
+    title: "Prepare future automation.",
+    body: "Auto sync is planned for later releases. For now, the page keeps the frontend structure ready for backend wiring.",
     commands: [
       {
         label: "Enable auto sync",
-        code: "gitfuse start --auto",
+        command: "gitfuse autosync enable",
       },
       {
-        label: "Enable auto sync with delay",
-        code: "gitfuse start --auto --delay 5m",
+        label: "Disable auto sync",
+        command: "gitfuse autosync disable",
       },
       {
-        label: "Stop auto sync",
-        code: "gitfuse stop",
+        label: "Show auto sync status",
+        command: "gitfuse autosync status",
       },
     ],
   },
 ];
 
-const navItems = [
-  { label: "Introduction", href: "#introduction" },
-  { label: "Quick start", href: "#quick-start" },
-  { label: "Installation", href: "#installation" },
-  { label: "Authentication", href: "#auth" },
-  { label: "Repositories", href: "#repositories" },
-  { label: "Sync workflow", href: "#sync" },
-  { label: "Status", href: "#status" },
-  { label: "Auto sync", href: "#auto-sync" },
-];
-
 export default function DocsPage() {
+  const router = useRouter();
+  const { status } = useSession();
+
+  function handleBack() {
+    if (status === "loading") return;
+
+    if (status === "authenticated") {
+      router.push("/dashboard");
+      return;
+    }
+
+    router.push("/");
+  }
+
   return (
-    <main className="gf-page gf-docs-page">
-      <div className="gf-bg">
-        <div className="gf-soft-aurora">
-          <SoftAurora
-            speed={0.6}
-            scale={1.5}
-            brightness={1}
-            color1="#0890f2"
-            color2="#1f54dc"
-            noiseFrequency={2.5}
-            noiseAmplitude={1}
-            bandHeight={0.5}
-            bandSpread={1}
-            octaveDecay={0.1}
-            layerOffset={0}
-            colorSpeed={1}
-            enableMouseInteraction
-            mouseInfluence={0.25}
-          />
-        </div>
-
-        <div className="gf-bg-grid" />
-        <div className="gf-bg-overlay" />
-      </div>
-
-      <header className="gf-header">
-        <a href="/" className="gf-logo">
+    <main className="gf-docs-page">
+      <header className="gf-docs-header">
+        <a href="/" className="gf-docs-logo">
           Git<span>Fuse</span>
         </a>
 
-        <nav className="gf-nav" aria-label="Main navigation">
-          <a href="/#features">Features</a>
-          <a href="/#compare">Compare</a>
-          <a href="/docs" className="active">
-            Docs
-          </a>
-          <a href="/#pricing">Pricing</a>
-          <a href="/#install">Install</a>
-        </nav>
-
-        <div className="gf-header-actions">
-          <a href="/login" className="gf-link-button">
-            Sign in
-          </a>
-          <a href="/login" className="gf-primary-small">
-            Start free
-          </a>
-        </div>
+        <button
+          type="button"
+          className="gf-docs-back-button"
+          onClick={handleBack}
+          disabled={status === "loading"}
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="17"
+            height="17"
+            fill="none"
+          >
+            <path
+              d="M15 18l-6-6 6-6"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Back
+        </button>
       </header>
 
-      <section className="gf-docs-shell">
-        <aside className="gf-docs-left">
-          <a href="/" className="gf-docs-back">
-            ← Back to home
-          </a>
+      <div className="gf-docs-shell">
+        <aside className="gf-docs-sidebar" aria-label="Documentation sections">
+          <p>On this page</p>
 
-          <nav className="gf-docs-toc" aria-label="On this page">
-            <p>On this page</p>
-
-            {navItems.map((item) => (
-              <a key={item.href} href={item.href}>
-                {item.label}
+          <nav>
+            {sections.map((section) => (
+              <a key={section.id} href={`#${section.id}`}>
+                {section.label}
               </a>
             ))}
           </nav>
@@ -243,7 +234,7 @@ export default function DocsPage() {
 
         <article className="gf-docs-content">
           <section id="introduction" className="gf-docs-hero">
-            <div className="gf-pill">
+            <div className="gf-pill gf-docs-pill">
               <span className="gf-pill-dot" />
               GitFuse CLI documentation
             </div>
@@ -253,62 +244,55 @@ export default function DocsPage() {
             <p>
               GitFuse syncs local Git commit objects across devices without
               forcing you to push unfinished WIP commits to GitHub. This docs
-              page covers the frontend command reference only. Backend-powered
-              API docs, authentication settings, and live account controls can
-              be connected later.
+              page covers the frontend command reference and can later be wired
+              to live backend-generated API documentation.
             </p>
-          </section>
 
-          <section className="gf-docs-callout">
-            <div>
-              <p>Recommended flow</p>
-              <h2>Install → authenticate → add repo → sync → pull elsewhere.</h2>
-            </div>
-
-            <code>
-              <span>
-                <em>$</em> gitfuse auth login
-              </span>
-              <span>
-                <em>$</em> gitfuse add .
-              </span>
-              <span>
-                <em>$</em> gitfuse sync
-              </span>
-            </code>
-          </section>
-
-          {commandSections.map((section) => (
-            <section
-              key={section.id}
-              id={section.id}
-              className="gf-docs-section"
-            >
-              <div className="gf-docs-section-heading">
-                <p>{section.title}</p>
-                <h2>{section.title}</h2>
-                <span>{section.description}</span>
+            <div className="gf-docs-flow-card">
+              <div>
+                <span>Recommended flow</span>
+                <strong>
+                  Install → authenticate → add repo → sync → pull elsewhere.
+                </strong>
               </div>
 
-              <div className="gf-command-list">
-                {section.commands.map((command) => (
-                  <div key={command.label} className="gf-command-card">
-                    <div>
-                      <p>{command.label}</p>
-                    </div>
+              <pre>
+                <code>
+                  <span>
+                    <em>$</em> gitfuse auth login
+                  </span>
+                  <span>
+                    <em>$</em> gitfuse add .
+                  </span>
+                  <span>
+                    <em>$</em> gitfuse sync
+                  </span>
+                </code>
+              </pre>
+            </div>
+          </section>
 
-                    <pre>
-                      <code>
-                        <em>$</em> {command.code}
-                      </code>
-                    </pre>
+          {commandGroups.map((group) => (
+            <section key={group.id} id={group.id} className="gf-docs-section">
+              <p className="gf-dash-eyebrow">{group.eyebrow}</p>
+              <h2>{group.title}</h2>
+              <p>{group.body}</p>
+
+              <div className="gf-docs-command-grid">
+                {group.commands.map((item) => (
+                  <div key={item.command} className="gf-docs-command-card">
+                    <span>{item.label}</span>
+
+                    <code>
+                      <em>$</em> {item.command}
+                    </code>
                   </div>
                 ))}
               </div>
             </section>
           ))}
         </article>
-      </section>
+      </div>
     </main>
   );
 }

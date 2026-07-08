@@ -1,8 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { ComponentType } from "react";
+import type { ComponentType, FormEvent } from "react";
 
 import { INSTALL_GUIDES, type InstallGuideKey } from "@/lib/install-commands";
 
@@ -37,9 +38,23 @@ const comparisonRows = [
 ];
 
 export default function HomePage() {
+  const router = useRouter();
   const [selectedInstall, setSelectedInstall] = useState<InstallGuideKey>("macos");
   const [heroEmail, setHeroEmail] = useState("");
   const currentGuide = INSTALL_GUIDES[selectedInstall];
+
+  function handleHeroEmailSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const trimmedEmail = heroEmail.trim();
+
+    if (!trimmedEmail) {
+      router.push("/login");
+      return;
+    }
+
+    router.push(`/login?email=${encodeURIComponent(trimmedEmail)}`);
+  }
 
   return (
     <main className="gf-page">
@@ -107,54 +122,57 @@ export default function HomePage() {
         <div className="gf-hero-cta-stack">
           <form
             className="gf-hero-email-form"
-            onSubmit={(event) => {
-              event.preventDefault();
+            onSubmit={handleHeroEmailSubmit}
+          >
+            <input
+              type="email"
+              placeholder="Enter your email"
+              value={heroEmail}
+              onChange={(event) => setHeroEmail(event.target.value)}
+              aria-label="Email address"
+            />
 
-              const query = heroEmail.trim()
-        ? `?email=${encodeURIComponent(heroEmail.trim())}`
-        : "";
+            <button type="submit" aria-label="Continue with email">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+              >
+                <path
+                  d="M5 12h13M13 6l6 6-6 6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </form>
 
-      window.location.href = `/login${query}`;
-    }}
-  >
-    <input
-      type="email"
-      placeholder="Enter your email"
-      value={heroEmail}
-      onChange={(event) => setHeroEmail(event.target.value)}
-      aria-label="Email address"
-    />
+          <div className="gf-hero-actions">
+            <a href="/login" className="gf-github-signin-button">
+              <span>Sign in</span>
 
-    <button type="submit" aria-label="Continue with email">
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path
-          d="M5 12h13M13 6l6 6-6 6"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </button>
-  </form>
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="19"
+                height="19"
+              >
+                <path
+                  fill="currentColor"
+                  d="M12 0C5.37 0 0 5.5 0 12.3c0 5.44 3.44 10.05 8.2 11.68.6.12.82-.27.82-.59 0-.29-.01-1.06-.02-2.08-3.34.74-4.04-1.65-4.04-1.65-.55-1.42-1.34-1.8-1.34-1.8-1.09-.76.08-.75.08-.75 1.2.09 1.84 1.27 1.84 1.27 1.07 1.88 2.81 1.34 3.5 1.02.11-.79.42-1.34.76-1.64-2.67-.31-5.47-1.37-5.47-6.1 0-1.35.47-2.45 1.24-3.31-.12-.31-.54-1.57.12-3.26 0 0 1.01-.33 3.3 1.27A11.2 11.2 0 0 1 12 5.95c1.02 0 2.05.14 3.01.41 2.29-1.6 3.3-1.27 3.3-1.27.66 1.69.24 2.95.12 3.26.77.86 1.24 1.96 1.24 3.31 0 4.74-2.81 5.78-5.49 6.09.43.38.81 1.12.81 2.26 0 1.63-.01 2.95-.01 3.35 0 .33.22.72.83.59A12.25 12.25 0 0 0 24 12.3C24 5.5 18.63 0 12 0Z"
+                />
+              </svg>
+            </a>
 
-  <div className="gf-hero-actions">
-    <a href="/login" className="gf-github-signin-button">
-      <span>Sign in</span>
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path
-          fill="currentColor"
-          d="M12 0C5.37 0 0 5.5 0 12.3c0 5.44 3.44 10.05 8.2 11.68.6.12.82-.27.82-.59 0-.29-.01-1.06-.02-2.08-3.34.74-4.04-1.65-4.04-1.65-.55-1.42-1.34-1.8-1.34-1.8-1.09-.76.08-.75.08-.75 1.2.09 1.84 1.27 1.84 1.27 1.07 1.88 2.81 1.34 3.5 1.02.11-.79.42-1.34.76-1.64-2.67-.31-5.47-1.37-5.47-6.1 0-1.35.47-2.45 1.24-3.31-.12-.31-.54-1.57.12-3.26 0 0 1.01-.33 3.3 1.27A11.2 11.2 0 0 1 12 5.95c1.02 0 2.05.14 3.01.41 2.29-1.6 3.3-1.27 3.3-1.27.66 1.69.24 2.95.12 3.26.77.86 1.24 1.96 1.24 3.31 0 4.74-2.81 5.78-5.49 6.09.43.38.81 1.12.81 2.26 0 1.63-.01 2.95-.01 3.35 0 .33.22.72.83.59A12.25 12.25 0 0 0 24 12.3C24 5.5 18.63 0 12 0Z"
-        />
-      </svg>
-    </a>
-
-    <a href="#install" className="gf-secondary-button">
-      Install CLI
-    </a>
-  </div>
-</div>
+            <a href="#install" className="gf-secondary-button">
+              Install CLI
+            </a>
+          </div>
+        </div>
 
         <div className="gf-hero-terminal" aria-label="GitFuse terminal preview">
           <div className="gf-terminal-top">
@@ -163,12 +181,14 @@ export default function HomePage() {
               <span />
               <span />
             </div>
+
             <p>gitfuse session handoff</p>
           </div>
 
           <div className="gf-terminal-body">
             <div>
               <p className="gf-terminal-muted"># laptop · end of session</p>
+
               <code>
                 <span>$ git commit -m "auth middleware wired"</span>
                 <span>$ gitfuse sync</span>
@@ -180,6 +200,7 @@ export default function HomePage() {
 
             <div>
               <p className="gf-terminal-muted"># desktop · resume instantly</p>
+
               <code>
                 <span>$ gitfuse pull</span>
                 <span className="gf-terminal-ok">✓ fetched 3 commits</span>
@@ -255,24 +276,29 @@ export default function HomePage() {
             <p>Free</p>
             <h3>$0</h3>
             <span>For individual developers getting started.</span>
+
             <ul>
               <li>3 devices</li>
               <li>5 repositories</li>
               <li>30-day sync history</li>
             </ul>
+
             <a href="/login">Start free</a>
           </article>
 
           <article className="gf-plan gf-plan-featured">
             <div className="gf-popular">Popular</div>
+
             <p>Pro</p>
             <h3>$9/mo</h3>
             <span>For developers working across several machines daily.</span>
+
             <ul>
               <li>Unlimited devices</li>
               <li>Unlimited repositories</li>
               <li>Priority relay speed</li>
             </ul>
+
             <a href="/login">Start Pro</a>
           </article>
 
@@ -280,11 +306,13 @@ export default function HomePage() {
             <p>Team</p>
             <h3>$18/user</h3>
             <span>For teams that need visibility and access controls.</span>
+
             <ul>
               <li>Team dashboard</li>
               <li>Per-repo controls</li>
               <li>Audit history</li>
             </ul>
+
             <a href="/login">Start team</a>
           </article>
         </div>
@@ -316,6 +344,7 @@ export default function HomePage() {
               <span />
               <span />
             </div>
+
             <p>{currentGuide.shell}</p>
           </div>
 
