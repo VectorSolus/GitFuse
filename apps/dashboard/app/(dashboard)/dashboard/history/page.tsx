@@ -3,15 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { DashboardDataError } from "@/components/dashboard/data-error";
 import { HistoryGridClient } from "@/components/dashboard/history-grid-client";
 import { useDashboardData, type DashboardData } from "@/hooks/use-dashboard-data";
 import {
   buildHistoryActivityByDate,
   buildYearCalendar,
   formatHistoryDateLabel,
-  getDefaultSelectedHistoryDate,
+  rememberSelectedHistoryDate,
+  resolveSelectedHistoryDate,
   summarizeHistoryEvents,
   toLocalDateKey,
+  type HistoryDateSelectionsByYear,
 } from "@/lib/history-calendar";
 
 type CommitItem = {
@@ -42,14 +45,17 @@ export default function HistoryPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const currentYear = new Date().getFullYear();
+  const [browserToday, setBrowserToday] = useState<Date | null>(null);
+  const currentYear = browserToday?.getFullYear() ?? new Date().getFullYear();
   const queryYear = Number(searchParams.get("year"));
   const requestedYear =
     Number.isInteger(queryYear) && queryYear >= 1970 && queryYear <= currentYear
       ? queryYear
       : currentYear;
-  const { data, loading } = useDashboardData(requestedYear);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const { data, loading, error } = useDashboardData(requestedYear);
+  const [explicitSelectionsByYear, setExplicitSelectionsByYear] = useState<
+    HistoryDateSelectionsByYear
+  >({});
   const selectedYear = data?.selectedHistoryYear ?? currentYear;
   const syncHistory = useMemo(() => buildSyncHistory(data?.history ?? []), [data?.history]);
 
@@ -71,23 +77,29 @@ export default function HistoryPage() {
     [data?.history],
   );
 
-  const defaultSelectedDate = useMemo(
-    () =>
-      getDefaultSelectedHistoryDate(
+  const resolvedSelectedDate = useMemo(
+    () => {
+      if (!browserToday) return null;
+      return resolveSelectedHistoryDate(
         [...activityByDate.values()]
           .filter((activity) => activity.commitCount > 0)
           .map((activity) => activity.dateKey),
         selectedYear,
-      ),
-    [activityByDate, selectedYear],
+        explicitSelectionsByYear,
+        browserToday,
+      );
+    },
+    [activityByDate, browserToday, explicitSelectionsByYear, selectedYear],
   );
-  const activeSelectedDate = selectedDate ?? defaultSelectedDate;
-  const selectedDay = historyByDate.get(activeSelectedDate);
+  const activeSelectedDate = resolvedSelectedDate;
+  const selectedDay = activeSelectedDate
+    ? historyByDate.get(activeSelectedDate)
+    : undefined;
   const selectedCommitCount = selectedDay ? countCommits(selectedDay) : 0;
 
   useEffect(() => {
-    setSelectedDate(null);
-  }, [selectedYear]);
+    setBrowserToday(new Date());
+  }, []);
 
   useEffect(() => {
     if (!data || data.selectedHistoryYear === requestedYear) return;
@@ -102,6 +114,12 @@ export default function HistoryPage() {
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
+  function selectDate(dateKey: string) {
+    setExplicitSelectionsByYear((current) =>
+      rememberSelectedHistoryDate(current, selectedYear, dateKey),
+    );
+  }
+
   const totals = useMemo(() => {
     return summarizeHistoryEvents(
       data?.history ?? [],
@@ -110,6 +128,10 @@ export default function HistoryPage() {
       (event) => event.repositoryName,
     );
   }, [data?.history]);
+
+  if (error && !loading) {
+    return <DashboardDataError message={error} />;
+  }
 
   return (
     <div className="gf-history-page">
@@ -178,7 +200,7 @@ export default function HistoryPage() {
             calendar={calendar}
             activityByDate={activityByDate}
             selectedDateKey={activeSelectedDate}
-            onSelectDate={setSelectedDate}
+            onSelectDate={selectDate}
             loading={loading}
           />
         </article>
@@ -188,7 +210,9 @@ export default function HistoryPage() {
             <div>
               <p className="gf-dash-eyebrow">Selected day</p>
               <h3>
-                {formatHistoryDateLabel(activeSelectedDate)}
+                {activeSelectedDate
+                  ? formatHistoryDateLabel(activeSelectedDate)
+                  : "Select a day"}
               </h3>
             </div>
 
@@ -255,12 +279,19 @@ export default function HistoryPage() {
                 <HistoryIcon />
               </div>
 
-              <h4>No commits synced on this day</h4>
-              <p>
-                {formatHistoryDateLabel(activeSelectedDate)} has no relay-side sync
-                activity yet. Pick a highlighted square to inspect synced
-                repositories and commit details.
-              </p>
+              {activeSelectedDate ? (
+                <>
+                  <h4>
+                    No activity on {formatHistoryDateLabel(activeSelectedDate)}.
+                  </h4>
+                  <p>Select a highlighted day to view synced commits.</p>
+                </>
+              ) : (
+                <>
+                  <h4>Select a day to view synced commits.</h4>
+                  <p>Highlighted days contain relay-side sync activity.</p>
+                </>
+              )}
             </div>
           )}
         </aside>
