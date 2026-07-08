@@ -1,0 +1,17 @@
+PackageIdentifier: GitFuse.GitFuse
+PackageVersion: "{{version}}"
+PackageLocale: en-US
+Publisher: GitFuse
+PackageName: GitFuse
+ShortDescription: Encrypted committed-git sync across devices.
+Description: GitFuse syncs committed git objects between devices through an encrypted relay.
+Moniker: gitfuse
+Tags:
+  - git
+  - sync
+  - cli
+  - developer-tools
+PackageUrl: https://gitfuse.dev
+License: NOASSERTION
+ManifestType: defaultLocale
+ManifestVersion: 1.9.0

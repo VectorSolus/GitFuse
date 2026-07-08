@@ -1,0 +1,16 @@
+PackageIdentifier: GitFuse.GitFuse
+PackageVersion: "{{version}}"
+InstallerLocale: en-US
+MinimumOSVersion: 10.0.0.0
+InstallerType: portable
+Commands:
+  - gitfuse
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/gitfuse/test-repo-2/releases/download/v{{version}}/gitfuse_{{version}}_windows_amd64.zip
+    InstallerSha256: "{{windows_amd64_sha256}}"
+    InstallerSwitches:
+      Silent: ""
+      SilentWithProgress: ""
+ManifestType: installer
+ManifestVersion: 1.9.0

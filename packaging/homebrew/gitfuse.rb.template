@@ -1,0 +1,18 @@
+cask "gitfuse" do
+  version "{{version}}"
+  arch arm: "arm64", intel: "amd64"
+
+  sha256 arm: "{{darwin_arm64_sha256}}",
+         intel: "{{darwin_amd64_sha256}}"
+
+  url "https://github.com/gitfuse/test-repo-2/releases/download/v#{version}/gitfuse_#{version}_darwin_#{arch}.tar.gz"
+  name "GitFuse"
+  desc "Encrypted committed-git sync across devices"
+  homepage "https://gitfuse.dev"
+
+  binary "gitfuse"
+
+  postflight do
+    system_command "#{staged_path}/gitfuse", args: ["version"]
+  end
+end
