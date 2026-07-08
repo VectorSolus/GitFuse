@@ -14,14 +14,70 @@ type RelayDatabaseUser = {
   subscription_status: string | null;
 };
 
+type RelayDatabaseGlobal = typeof globalThis & {
+  __gitfuseRelaySql?: postgres.Sql;
+  __gitfuseRelaySqlDatabaseUrl?: string;
+};
+
+export type RelayDatabasePoolConfig = {
+  max: number;
+  idle_timeout: number;
+  connect_timeout: number;
+  max_lifetime: number;
+  prepare: false;
+};
+
+const globalForDatabase = globalThis as RelayDatabaseGlobal;
 let cachedSql: postgres.Sql | null = null;
+
+function positiveIntegerEnv(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+export function getRelayDatabasePoolConfig(): RelayDatabasePoolConfig {
+  return {
+    max: positiveIntegerEnv("DATABASE_POOL_MAX", 4),
+    idle_timeout: positiveIntegerEnv("DATABASE_IDLE_TIMEOUT", 20),
+    connect_timeout: positiveIntegerEnv("DATABASE_CONNECT_TIMEOUT", 10),
+    max_lifetime: positiveIntegerEnv("DATABASE_MAX_LIFETIME", 30 * 60),
+    prepare: false,
+  };
+}
 
 export function getRelaySql() {
   if (cachedSql) return cachedSql;
   const connectionString = process.env.DATABASE_URL?.trim();
   if (!connectionString) return null;
-  cachedSql = postgres(connectionString, { prepare: false });
+
+  if (
+    process.env.NODE_ENV !== "production" &&
+    globalForDatabase.__gitfuseRelaySql &&
+    globalForDatabase.__gitfuseRelaySqlDatabaseUrl === connectionString
+  ) {
+    cachedSql = globalForDatabase.__gitfuseRelaySql;
+    return cachedSql;
+  }
+
+  cachedSql = postgres(connectionString, getRelayDatabasePoolConfig());
+
+  if (process.env.NODE_ENV !== "production") {
+    globalForDatabase.__gitfuseRelaySql = cachedSql;
+    globalForDatabase.__gitfuseRelaySqlDatabaseUrl = connectionString;
+  }
+
   return cachedSql;
+}
+
+export async function closeRelaySqlForTest() {
+  const sql = cachedSql ?? globalForDatabase.__gitfuseRelaySql;
+  cachedSql = null;
+  delete globalForDatabase.__gitfuseRelaySql;
+  delete globalForDatabase.__gitfuseRelaySqlDatabaseUrl;
+
+  if (sql) {
+    await sql.end({ timeout: 5 });
+  }
 }
 
 function withEffectiveTier(user: RelayDatabaseUser) {
@@ -40,6 +96,33 @@ function withEffectiveTier(user: RelayDatabaseUser) {
 
 export function relayDatabaseConfigured() {
   return Boolean(process.env.DATABASE_URL?.trim());
+}
+
+export type RelayDatabaseReadiness =
+  | { ok: true }
+  | { ok: false; reason: "database_not_configured" | "database_unreachable" | "database_timeout" };
+
+export async function checkRelayDatabaseReady(timeoutMs = 2000): Promise<RelayDatabaseReadiness> {
+  const sql = getRelaySql();
+  if (!sql) return { ok: false, reason: "database_not_configured" };
+
+  let timeout: NodeJS.Timeout | null = null;
+  try {
+    await Promise.race([
+      sql`select 1`,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("database_timeout")), timeoutMs);
+      }),
+    ]);
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof Error && error.message === "database_timeout") {
+      return { ok: false, reason: "database_timeout" };
+    }
+    return { ok: false, reason: "database_unreachable" };
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 export async function findRelayDatabaseUserById(userId: string) {
