@@ -1,0 +1,91 @@
+version: 2
+
+project_name: gitfuse
+
+before:
+  hooks:
+    - go -C apps/cli mod tidy
+
+builds:
+  - id: gitfuse
+    dir: apps/cli
+    main: .
+    binary: gitfuse
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/gitfuse/gitfuse/apps/cli/cmd.version={{ .Version }}
+      - -X github.com/gitfuse/gitfuse/apps/cli/cmd.commit={{ .Commit }}
+      - -X github.com/gitfuse/gitfuse/apps/cli/cmd.buildDate={{ .Date }}
+      - -X github.com/gitfuse/gitfuse/apps/cli/cmd.defaultRelayURL={{ .Env.GITFUSE_RELEASE_RELAY_URL }}
+
+archives:
+  - id: gitfuse
+    ids:
+      - gitfuse
+    name_template: "gitfuse_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md
+      - packaging/release-readiness.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ .Version }}-snapshot"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^Merge "
+      - "^merge "
+  groups:
+    - title: Features
+      regexp: "^feat"
+      order: 0
+    - title: Fixes
+      regexp: "^fix"
+      order: 1
+    - title: Refactors
+      regexp: "^refactor"
+      order: 2
+    - title: Performance
+      regexp: "^perf"
+      order: 3
+    - title: Documentation
+      regexp: "^docs"
+      order: 4
+    - title: Tests
+      regexp: "^test"
+      order: 5
+    - title: CI
+      regexp: "^ci"
+      order: 6
+    - title: Chores
+      regexp: "^chore"
+      order: 7
+
+release:
+  draft: true
+  prerelease: auto
