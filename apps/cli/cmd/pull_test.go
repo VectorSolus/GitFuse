@@ -390,13 +390,17 @@ func TestPullNonFastForwardDoesNotAdvanceLedgerBeyondReachableHead(t *testing.T)
 	writePullMetadata(t, device1, relay.repo, base, initial)
 
 	var output bytes.Buffer
-	if err := runCommandInDir(t, device1, &output, func(cmd *cobra.Command) error {
+	err := runCommandInDir(t, device1, &output, func(cmd *cobra.Command) error {
 		return runPull(cmd, pullOptions{})
-	}); err != nil {
-		t.Fatal(err)
+	})
+	if err == nil {
+		t.Fatal("non-fast-forward pull succeeded")
 	}
-	if !strings.Contains(output.String(), "Pulled 1 commit(s), branch unchanged because non-fast-forward.") {
-		t.Fatalf("pull output = %q, want non-fast-forward message", output.String())
+	if !strings.Contains(err.Error(), nonFastForwardPullMessage) {
+		t.Fatalf("pull error = %q, want non-fast-forward refusal", err.Error())
+	}
+	if strings.Contains(output.String(), "Pulled") || strings.Contains(output.String(), "branch unchanged because non-fast-forward") {
+		t.Fatalf("pull printed success-style output: %q", output.String())
 	}
 	if present, err := commitExists(device1, remoteCommit); err != nil {
 		t.Fatal(err)
@@ -446,6 +450,28 @@ func TestPullNonFastForwardDoesNotAdvanceLedgerBeyondReachableHead(t *testing.T)
 	assertLogContains(t, logOutput.String(), "synced", base, "device 2 phase 18 commit")
 	if strings.Contains(logOutput.String(), shortLogSHA(remoteCommit)) {
 		t.Fatalf("log output included unreachable remote commit %s:\n%s", remoteCommit, logOutput.String())
+	}
+
+	var existingObjectOutput bytes.Buffer
+	existingObjectErr := runCommandInDir(t, device1, &existingObjectOutput, func(cmd *cobra.Command) error {
+		return runPull(cmd, pullOptions{})
+	})
+	if existingObjectErr == nil {
+		t.Fatal("non-fast-forward pull with pre-existing remote object succeeded")
+	}
+	if !strings.Contains(existingObjectErr.Error(), nonFastForwardPullMessage) {
+		t.Fatalf("pre-existing object pull error = %q, want non-fast-forward refusal", existingObjectErr.Error())
+	}
+	if strings.Contains(existingObjectOutput.String(), "Pulled") || strings.Contains(existingObjectOutput.String(), "branch unchanged because non-fast-forward") {
+		t.Fatalf("pre-existing object pull printed success-style output: %q", existingObjectOutput.String())
+	}
+	assertRestoredHead(t, device1, localCommit)
+	ledger, err = workspace.ReadLedger(device1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ledger.SyncedHead != base {
+		t.Fatalf("pre-existing object pull ledger synced head = %s, want %s", ledger.SyncedHead, base)
 	}
 
 	if _, err := workspace.WriteLedger(device1, workspace.Ledger{

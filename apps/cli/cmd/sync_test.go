@@ -275,13 +275,17 @@ func TestSyncManualRebaseResolutionIgnoresStaleSelfRelayHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	var divergentPullOutput bytes.Buffer
-	if err := runCommandInDir(t, device1, &divergentPullOutput, func(cmd *cobra.Command) error {
+	divergentPullErr := runCommandInDir(t, device1, &divergentPullOutput, func(cmd *cobra.Command) error {
 		return runPull(cmd, pullOptions{})
-	}); err != nil {
-		t.Fatal(err)
+	})
+	if divergentPullErr == nil {
+		t.Fatal("device 1 divergent pull succeeded")
 	}
-	if !strings.Contains(divergentPullOutput.String(), "Pulled 1 commit(s), branch unchanged because non-fast-forward.") {
-		t.Fatalf("device 1 pull output = %q, want non-fast-forward import", divergentPullOutput.String())
+	if !strings.Contains(divergentPullErr.Error(), nonFastForwardPullMessage) {
+		t.Fatalf("device 1 divergent pull error = %q, want non-fast-forward refusal", divergentPullErr.Error())
+	}
+	if strings.Contains(divergentPullOutput.String(), "Pulled") || strings.Contains(divergentPullOutput.String(), "branch unchanged because non-fast-forward") {
+		t.Fatalf("device 1 divergent pull printed success-style output: %q", divergentPullOutput.String())
 	}
 	assertRestoredHead(t, device1, localCommit)
 	if present, err := commitExists(device1, remoteCommit); err != nil {

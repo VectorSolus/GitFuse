@@ -23,6 +23,8 @@ type pullOptions struct {
 	force    bool
 }
 
+const nonFastForwardPullMessage = "Remote commits were found, but the current branch cannot be fast-forwarded. Rebase or resolve divergence before pulling."
+
 var pullOpts pullOptions
 
 var pullCmd = &cobra.Command{
@@ -103,6 +105,9 @@ func runPull(cmd *cobra.Command, opts pullOptions) error {
 	if err != nil {
 		return err
 	}
+	if opts.asBranch == "" && result.PulledCommits > 0 && !result.FastForwarded {
+		return fmt.Errorf(nonFastForwardPullMessage)
+	}
 	commitCount := result.PulledCommits
 	if progress := tui.ReplayProgress(commitCount); progress != "" {
 		fmt.Fprintln(cmd.OutOrStdout(), progress)
@@ -128,8 +133,6 @@ func runPull(cmd *cobra.Command, opts pullOptions) error {
 		fmt.Fprintln(cmd.OutOrStdout(), "No new commits to pull.")
 	case result.FastForwarded:
 		fmt.Fprintf(cmd.OutOrStdout(), "Pulled %d commit(s), fast-forwarded branch.\n", result.PulledCommits)
-	default:
-		fmt.Fprintf(cmd.OutOrStdout(), "Pulled %d commit(s), branch unchanged because non-fast-forward.\n", result.PulledCommits)
 	}
 	return nil
 }
