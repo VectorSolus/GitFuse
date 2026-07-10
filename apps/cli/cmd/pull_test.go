@@ -688,11 +688,91 @@ func TestLegacyRelayMissingPayloadRepairsStalePulledLedgerWithoutFalseSync(t *te
 	assertGitfuseNotTrackedOrStaged(t, repoPath)
 }
 
+func TestPullSkipsUnavailableLegacyRowsAndFastForwardsNewMetadataBundle(t *testing.T) {
+	t.Setenv("GITFUSE_RELAY_URL", "http://phase23.test")
+	t.Setenv("GITFUSE_TEST_TOKEN", "pull-token")
+	t.Setenv("GITFUSE_HOME", t.TempDir())
+
+	device1 := newPullGitRepo(t, "device1", "main")
+	initial := commitPullFile(t, device1, "README.md", "initial\n", "initial commit", time.Unix(1, 0))
+	initialBundle := mustCreatePullBundle(t, device1, "")
+	oldSynced := commitPullFile(t, device1, "file5-device1.txt", "device 1 old\n", "device 1 old synced commit", time.Unix(2, 0))
+	oldBundle := mustCreatePullBundle(t, device1, initial)
+
+	device2 := filepath.Join(t.TempDir(), "device2")
+	testGit(t, "", "clone", device1, device2)
+	testGit(t, device2, "config", "user.name", "gitfuse")
+	testGit(t, device2, "config", "user.email", "test@gitfuse.dev")
+	if err := excludeGitfuseMetadata(device2); err != nil {
+		t.Fatal(err)
+	}
+
+	newCommit := commitPullFile(t, device1, "file6-device1-phase23.txt", "phase 23\n", "device 1 phase 23 commit", time.Unix(3, 0))
+	newBundle := mustCreatePullBundle(t, device1, oldSynced)
+
+	relay := newPullRelayFixture(relayRepository{
+		ID:           "repo-phase23-id",
+		UserID:       "user-id",
+		RootSHA:      initial,
+		DisplayName:  "repo-phase23",
+		RemoteURL:    "",
+		RelayEntryID: "repo-phase23-relay",
+	})
+	relay.addLegacyBundle(relay.repo.RelayEntryID, "bundle-initial-legacy", "device-1", initialBundle, time.Unix(10, 0))
+	relay.addLegacyBundle(relay.repo.RelayEntryID, "bundle-old-legacy", "device-1", oldBundle, time.Unix(20, 0))
+	relay.addBundle(relay.repo.RelayEntryID, "bundle-phase23", "device-1", newBundle, time.Unix(30, 0))
+	relay.missingPayloads["bundle-initial-legacy"] = true
+	relay.missingPayloads["bundle-old-legacy"] = true
+	installPullRelayTransport(t, relay)
+	writePullMetadata(t, device2, relay.repo, oldSynced, initial)
+
+	var output bytes.Buffer
+	if err := runCommandInDir(t, device2, &output, func(cmd *cobra.Command) error {
+		return runPull(cmd, pullOptions{})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "Pulled 1 commit(s), fast-forwarded branch.") {
+		t.Fatalf("pull output = %q, want fast-forward", output.String())
+	}
+	if relay.downloadCalls["bundle-initial-legacy"] != 0 || relay.downloadCalls["bundle-old-legacy"] != 0 {
+		t.Fatalf("legacy downloads = initial:%d old:%d, want both 0", relay.downloadCalls["bundle-initial-legacy"], relay.downloadCalls["bundle-old-legacy"])
+	}
+	if relay.downloadCalls["bundle-phase23"] != 1 {
+		t.Fatalf("phase23 download calls = %d, want 1", relay.downloadCalls["bundle-phase23"])
+	}
+	assertRestoredHead(t, device2, newCommit)
+	assertFileContent(t, device2, "file6-device1-phase23.txt", "phase 23\n")
+	assertFileMatchesHEAD(t, device2, "file6-device1-phase23.txt")
+	ledger, err := workspace.ReadLedger(device2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ledger.SyncedHead != newCommit {
+		t.Fatalf("ledger synced head = %s, want %s", ledger.SyncedHead, newCommit)
+	}
+	if ledger.PreviousSyncedHead != oldSynced {
+		t.Fatalf("ledger previous synced head = %s, want %s", ledger.PreviousSyncedHead, oldSynced)
+	}
+	var statusOutput bytes.Buffer
+	if err := runCommandInDir(t, device2, &statusOutput, func(cmd *cobra.Command) error {
+		return runStatus(cmd, statusOptions{})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(statusOutput.String(), "Commits ahead: 0") {
+		t.Fatalf("status output = %q, want zero ahead", statusOutput.String())
+	}
+	assertCleanWorktree(t, device2)
+	assertGitfuseNotTrackedOrStaged(t, device2)
+}
+
 type pullRelayFixture struct {
 	repo            relayRepository
 	repos           map[string]relayRepository
 	bundles         map[string][]pullRelayBundle
 	missingPayloads map[string]bool
+	downloadCalls   map[string]int
 }
 
 type pullRelayBundle struct {
@@ -706,6 +786,7 @@ func newPullRelayFixture(repo relayRepository) *pullRelayFixture {
 		repos:           map[string]relayRepository{repo.RelayEntryID: repo},
 		bundles:         make(map[string][]pullRelayBundle),
 		missingPayloads: make(map[string]bool),
+		downloadCalls:   make(map[string]int),
 	}
 }
 
@@ -774,6 +855,7 @@ func newPullRelayTransport(t *testing.T, fixture *pullRelayFixture) http.RoundTr
 		}
 		if strings.HasPrefix(r.URL.Path, "/v1/bundles/") && strings.HasSuffix(r.URL.Path, "/download") {
 			bundleID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1/bundles/"), "/download")
+			fixture.downloadCalls[bundleID]++
 			if fixture.missingPayloads[bundleID] {
 				return restoreJSONResponse(http.StatusNotFound, map[string]string{"error": "missing"}), nil
 			}

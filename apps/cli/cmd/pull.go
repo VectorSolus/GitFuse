@@ -192,8 +192,16 @@ func pullRelayBundles(ctx context.Context, repoPath string, localCfg config.Loca
 		}
 	}
 
-	bundles := make([]downloadedRestoreBundle, 0, len(rows))
-	for _, row := range rows {
+	downloadRows := rows
+	if metadataHeadOK {
+		downloadRows, err = selectRequiredPullBundleRows(repoPath, rows, localHead)
+		if err != nil {
+			return pullResult{}, err
+		}
+	}
+
+	bundles := make([]downloadedRestoreBundle, 0, len(downloadRows))
+	for _, row := range downloadRows {
 		bundle, err := downloadRestoreBundle(ctx, repo, row)
 		if err != nil {
 			return pullResult{}, err
@@ -292,6 +300,28 @@ func sortPullBundleRows(rows []relayBundleRow) {
 		}
 		return left.Before(right)
 	})
+}
+
+func selectRequiredPullBundleRows(repoPath string, rows []relayBundleRow, localHead string) ([]relayBundleRow, error) {
+	required := make([]relayBundleRow, 0, len(rows))
+	for _, row := range rows {
+		head := relayHeadFromBundleRow(row)
+		if head == "" {
+			continue
+		}
+		reachable, err := commitReachableFrom(repoPath, head, localHead)
+		if err != nil {
+			return nil, err
+		}
+		if reachable {
+			continue
+		}
+		required = append(required, row)
+	}
+	if len(required) == 0 {
+		return nil, fmt.Errorf("pull failed: relay metadata advertises a new head but no required bundle payload was identified")
+	}
+	return required, nil
 }
 
 func importMissingPullBundles(repoPath string, bundles []downloadedRestoreBundle, ledger workspace.Ledger) (string, int, error) {
