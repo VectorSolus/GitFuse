@@ -95,6 +95,16 @@ func TestSyncOneCommitUploadsExactlyOneBundle(t *testing.T) {
 	if upload.fields["bundleHash"] == "" {
 		t.Fatal("bundleHash was empty")
 	}
+	var commitMetadata []struct {
+		SHA     string `json:"sha"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(upload.fields["commits"]), &commitMetadata); err != nil {
+		t.Fatalf("commits metadata was not valid JSON: %v", err)
+	}
+	if len(commitMetadata) != 1 || commitMetadata[0].SHA != second || strings.TrimSpace(commitMetadata[0].Message) != "second commit" {
+		t.Fatalf("commits metadata = %+v, want uploaded second commit %s", commitMetadata, second)
+	}
 	if len(upload.payload) == 0 {
 		t.Fatal("uploaded bundle payload was empty")
 	}
@@ -544,6 +554,7 @@ func captureSyncUpload(r *http.Request, upload *syncUploadCapture) (*http.Respon
 		"bundleHash":   r.FormValue("bundleHash"),
 		"commitCount":  r.FormValue("commitCount"),
 		"sizeBytes":    r.FormValue("sizeBytes"),
+		"commits":      r.FormValue("commits"),
 	}
 	files := r.MultipartForm.File["bundle"]
 	if len(files) == 0 {

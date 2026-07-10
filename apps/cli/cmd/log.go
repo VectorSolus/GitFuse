@@ -55,7 +55,7 @@ func runLog(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	if relayCandidates, err := activeRelayHeadCandidates(context.Background(), localCfg); err == nil && len(relayCandidates) > 0 {
+	if relayRows, relayCandidates, err := activeRelayMetadata(context.Background(), localCfg); err == nil && len(relayRows) > 0 {
 		head, err := currentHead(repoPath)
 		if err != nil {
 			return err
@@ -69,9 +69,20 @@ func runLog(cmd *cobra.Command) error {
 			return err
 		}
 		if len(blockers) == 0 {
-			if syncedHead, err := effectiveRelaySyncBase(repoPath, ledger, head, relayCandidates); err != nil {
+			if len(relayCandidates) == 0 {
+				repaired, _, err := repairLedgerToLocalHeadForLegacyRelayRowsIfSafe(repoPath, ledger, head, relayRows, relayCandidates)
+				if err != nil {
+					return err
+				}
+				ledger = repaired
+			} else if syncedHead, err := effectiveRelaySyncBase(repoPath, ledger, head, relayCandidates); err != nil {
 				return err
 			} else {
+				repaired, _, err := advanceLedgerToReachableRelayHeadIfNeeded(repoPath, ledger, head, syncedHead)
+				if err != nil {
+					return err
+				}
+				ledger = repaired
 				ledger.SyncedHead = syncedHead
 			}
 		}

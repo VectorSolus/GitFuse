@@ -3,6 +3,7 @@ package relay
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -25,6 +26,16 @@ type UploadRequest struct {
 	CommitCount  string
 	SizeBytes    string
 	Payload      []byte
+	Commits      []SyncedCommit
+}
+
+type SyncedCommit struct {
+	SHA         string `json:"sha"`
+	Message     string `json:"message"`
+	AuthorName  string `json:"authorName,omitempty"`
+	AuthorEmail string `json:"authorEmail,omitempty"`
+	AuthoredAt  string `json:"authoredAt,omitempty"`
+	CommittedAt string `json:"committedAt,omitempty"`
 }
 
 func NewClient(baseURL, token string) *Client {
@@ -50,6 +61,15 @@ func (c *Client) UploadBundle(ctx context.Context, upload UploadRequest) (*http.
 		"sizeBytes":    upload.SizeBytes,
 	} {
 		if err := writer.WriteField(key, value); err != nil {
+			return nil, err
+		}
+	}
+	if len(upload.Commits) > 0 {
+		commits, err := json.Marshal(upload.Commits)
+		if err != nil {
+			return nil, err
+		}
+		if err := writer.WriteField("commits", string(commits)); err != nil {
 			return nil, err
 		}
 	}

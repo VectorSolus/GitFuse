@@ -108,17 +108,25 @@ func runRestore(cmd *cobra.Command, name string) error {
 }
 
 type relayBundleRow struct {
-	ID             string `json:"id"`
-	RepositoryID   string `json:"repositoryId"`
-	DeviceID       string `json:"deviceId"`
-	BundleHash     string `json:"bundleHash"`
-	CommitCount    int    `json:"commitCount"`
-	SizeBytes      int64  `json:"sizeBytes"`
-	R2Key          string `json:"r2Key"`
-	Status         string `json:"status"`
-	ParentBundleID string `json:"parentBundleId"`
-	CreatedAt      string `json:"createdAt"`
-	ExpiresAt      string `json:"expiresAt"`
+	ID             string                 `json:"id"`
+	RepositoryID   string                 `json:"repositoryId"`
+	DeviceID       string                 `json:"deviceId"`
+	BundleHash     string                 `json:"bundleHash"`
+	CommitCount    int                    `json:"commitCount"`
+	SizeBytes      int64                  `json:"sizeBytes"`
+	R2Key          string                 `json:"r2Key"`
+	Status         string                 `json:"status"`
+	ParentBundleID string                 `json:"parentBundleId"`
+	CreatedAt      string                 `json:"createdAt"`
+	ExpiresAt      string                 `json:"expiresAt"`
+	HeadSHA        string                 `json:"headSha,omitempty"`
+	HeadSHAUpper   string                 `json:"headSHA,omitempty"`
+	HeadSHASnake   string                 `json:"head_sha,omitempty"`
+	Commits        []relayBundleCommitRow `json:"commits,omitempty"`
+}
+
+type relayBundleCommitRow struct {
+	SHA string `json:"sha"`
 }
 
 type downloadedRestoreBundle struct {
@@ -215,7 +223,11 @@ func downloadRestoreBundles(ctx context.Context, repo relayRepository) ([]downlo
 }
 
 func loadRestoreBundleRows(ctx context.Context, relayEntryID string) ([]relayBundleRow, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, relayBaseURL()+"/v1/bundles/"+relayEntryID, nil)
+	relayURL, err := relayBaseURLOrError()
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, relayURL+"/v1/bundles/"+relayEntryID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -281,13 +293,17 @@ func selectRestorableBundleRows(repoName string, rows []relayBundleRow) ([]relay
 }
 
 func downloadRestoreBundle(ctx context.Context, repo relayRepository, row relayBundleRow) (downloadedRestoreBundle, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, relayBaseURL()+"/v1/bundles/"+row.ID+"/download", nil)
+	token := deviceToken()
+	if token == "" {
+		return downloadedRestoreBundle{}, fmt.Errorf(notAuthenticatedMessage)
+	}
+	relayURL, err := relayBaseURLOrError()
 	if err != nil {
 		return downloadedRestoreBundle{}, err
 	}
-	token := deviceToken()
-	if token == "" {
-		return downloadedRestoreBundle{}, fmt.Errorf("not authenticated; run 'gitfuse auth'")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, relayURL+"/v1/bundles/"+row.ID+"/download", nil)
+	if err != nil {
+		return downloadedRestoreBundle{}, err
 	}
 	req.Header.Set("authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)

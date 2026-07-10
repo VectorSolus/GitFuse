@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -161,6 +162,36 @@ func pullRelayBundles(ctx context.Context, repoPath string, localCfg config.Loca
 		DisplayName:  localCfg.DisplayName,
 		RelayEntryID: localCfg.RelayEntryID,
 	}
+	metadataHead, metadataHeadOK := remoteHeadFromRows(rows)
+	if metadataHeadOK {
+		remoteReachable, err := commitReachableFrom(repoPath, metadataHead, localHead)
+		if err != nil {
+			return pullResult{}, err
+		}
+		if remoteReachable {
+			if _, _, err := advanceLedgerToReachableRelayHeadIfNeeded(repoPath, ledger, localHead, metadataHead); err != nil {
+				return pullResult{}, err
+			}
+			return pullResult{RemoteHead: metadataHead}, nil
+		}
+	} else if ledger.SyncedHead == localHead {
+		return pullResult{RemoteHead: localHead}, nil
+	} else {
+		repaired, ok, err := repairLedgerToLocalHeadForLegacyRelayRowsIfSafe(repoPath, ledger, localHead, rows, nil)
+		if err != nil {
+			return pullResult{}, err
+		}
+		if ok || repaired.SyncedHead == localHead {
+			return pullResult{RemoteHead: localHead}, nil
+		}
+		ledger = repaired
+	}
+	if allowFastForward {
+		if err := ensureCleanTrackedWorktree(repoPath); err != nil {
+			return pullResult{}, err
+		}
+	}
+
 	bundles := make([]downloadedRestoreBundle, 0, len(rows))
 	for _, row := range rows {
 		bundle, err := downloadRestoreBundle(ctx, repo, row)
@@ -174,17 +205,18 @@ func pullRelayBundles(ctx context.Context, repoPath string, localCfg config.Loca
 	if err != nil {
 		return pullResult{}, err
 	}
+	if metadataHeadOK && metadataHead != remoteHead {
+		return pullResult{}, fmt.Errorf("pull failed: relay metadata head %s does not match downloaded bundle head %s", metadataHead, remoteHead)
+	}
 	remoteReachable, err := commitReachableFrom(repoPath, remoteHead, localHead)
 	if err != nil {
 		return pullResult{}, err
 	}
 	if remoteReachable {
-		return pullResult{RemoteHead: remoteHead}, nil
-	}
-	if allowFastForward {
-		if err := ensureCleanTrackedWorktree(repoPath); err != nil {
+		if _, _, err := advanceLedgerToReachableRelayHeadIfNeeded(repoPath, ledger, localHead, remoteHead); err != nil {
 			return pullResult{}, err
 		}
+		return pullResult{RemoteHead: remoteHead}, nil
 	}
 
 	importedHead, importedCount, err := importMissingPullBundles(repoPath, bundles, ledger)
@@ -341,6 +373,29 @@ func remoteHeadFromBundles(bundles []downloadedRestoreBundle) (string, error) {
 	return "", fmt.Errorf("pull failed: relay bundles do not advertise a remote head")
 }
 
+func remoteHeadFromRows(rows []relayBundleRow) (string, bool) {
+	for i := len(rows) - 1; i >= 0; i-- {
+		if head := relayHeadFromBundleRow(rows[i]); head != "" {
+			return head, true
+		}
+	}
+	return "", false
+}
+
+func relayHeadFromBundleRow(row relayBundleRow) string {
+	for _, head := range []string{row.HeadSHA, row.HeadSHAUpper, row.HeadSHASnake} {
+		if head = strings.TrimSpace(head); head != "" {
+			return head
+		}
+	}
+	for i := len(row.Commits) - 1; i >= 0; i-- {
+		if sha := strings.TrimSpace(row.Commits[i].SHA); sha != "" {
+			return sha
+		}
+	}
+	return ""
+}
+
 func missingManifestCommits(repoPath string, manifest gfgit.BundleManifest, disposed map[string]bool) ([]string, error) {
 	missing := make([]string, 0, len(manifest.Commits))
 	for _, commit := range manifest.Commits {
@@ -433,6 +488,22 @@ func ensureCleanTrackedWorktree(repoPath string) error {
 	return nil
 }
 
+func trackedWorktreeClean(repoPath string) (bool, error) {
+	if err := runGit(repoPath, "diff", "--quiet", "HEAD", "--"); err != nil {
+		if strings.Contains(err.Error(), "exit status 1") {
+			return false, nil
+		}
+		return false, err
+	}
+	if err := runGit(repoPath, "diff", "--cached", "--quiet", "HEAD", "--"); err != nil {
+		if strings.Contains(err.Error(), "exit status 1") {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 func updatePullLedger(repoPath string, ledger workspace.Ledger, syncedHead string) error {
 	ledger.PreviousSyncedHead = ledger.SyncedHead
 	ledger.SyncedHead = syncedHead
@@ -469,6 +540,94 @@ func repairLedgerSyncedHeadIfNeeded(repoPath string, ledger workspace.Ledger) (w
 	return ledger, err == nil, err
 }
 
+func advanceLedgerToReachableRelayHeadIfNeeded(repoPath string, ledger workspace.Ledger, localHead, relayHead string) (workspace.Ledger, bool, error) {
+	relayHead = strings.TrimSpace(relayHead)
+	if relayHead == "" || ledger.SyncedHead == relayHead {
+		return ledger, false, nil
+	}
+	relayReachable, err := commitReachableFrom(repoPath, relayHead, localHead)
+	if err != nil {
+		return ledger, false, err
+	}
+	if !relayReachable {
+		return ledger, false, nil
+	}
+	if ledger.SyncedHead != "" {
+		ledgerReachableFromRelay, err := commitReachableFrom(repoPath, ledger.SyncedHead, relayHead)
+		if err != nil {
+			return ledger, false, err
+		}
+		if !ledgerReachableFromRelay {
+			return ledger, false, nil
+		}
+	}
+	ledger.PreviousSyncedHead = ledger.SyncedHead
+	ledger.SyncedHead = relayHead
+	_, err = workspace.WriteLedger(repoPath, ledger)
+	return ledger, err == nil, err
+}
+
+func repairLedgerToLocalHeadForLegacyRelayRowsIfSafe(repoPath string, ledger workspace.Ledger, localHead string, rows []relayBundleRow, candidates []relayHeadCandidate) (workspace.Ledger, bool, error) {
+	if len(rows) == 0 || len(candidates) > 0 || ledger.SyncedHead == "" || localHead == "" || ledger.SyncedHead == localHead {
+		return ledger, false, nil
+	}
+	if _, ok := remoteHeadFromRows(rows); ok {
+		return ledger, false, nil
+	}
+	ledgerReachable, err := commitReachableFrom(repoPath, ledger.SyncedHead, localHead)
+	if err != nil || !ledgerReachable {
+		return ledger, false, err
+	}
+	clean, err := trackedWorktreeClean(repoPath)
+	if err != nil || !clean {
+		return ledger, false, err
+	}
+	lastPullAt, ok := parseLedgerTimestamp(ledger.LastPullAt)
+	if !ok {
+		return ledger, false, nil
+	}
+	notNewer, err := commitsBetweenNotNewerThan(repoPath, ledger.SyncedHead, localHead, lastPullAt)
+	if err != nil || !notNewer {
+		return ledger, false, err
+	}
+	ledger.PreviousSyncedHead = ledger.SyncedHead
+	ledger.SyncedHead = localHead
+	_, err = workspace.WriteLedger(repoPath, ledger)
+	return ledger, err == nil, err
+}
+
+func parseLedgerTimestamp(value string) (time.Time, bool) {
+	if strings.TrimSpace(value) == "" {
+		return time.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	return parsed, err == nil
+}
+
+func commitsBetweenNotNewerThan(repoPath, from, to string, cutoff time.Time) (bool, error) {
+	if from == "" || to == "" || from == to {
+		return true, nil
+	}
+	out, err := gitOutput(repoPath, "log", "--format=%ct", from+".."+to)
+	if err != nil {
+		return false, err
+	}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		seconds, err := strconv.ParseInt(line, 10, 64)
+		if err != nil {
+			return false, fmt.Errorf("parse commit timestamp %q: %w", line, err)
+		}
+		if time.Unix(seconds, 0).After(cutoff) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func latestRelayHead(ctx context.Context, localCfg config.LocalConfig) (string, bool, error) {
 	heads, err := activeRelayHeads(ctx, localCfg)
 	if err != nil {
@@ -492,7 +651,15 @@ func activeRelayHeads(ctx context.Context, localCfg config.LocalConfig) ([]strin
 	return heads, nil
 }
 
-func activeRelayHeadCandidates(ctx context.Context, localCfg config.LocalConfig) ([]relayHeadCandidate, error) {
+func activeRelayMetadata(ctx context.Context, localCfg config.LocalConfig) ([]relayBundleRow, []relayHeadCandidate, error) {
+	rows, err := activeRelayBundleRows(ctx, localCfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return rows, relayHeadCandidatesFromRows(rows), nil
+}
+
+func activeRelayBundleRows(ctx context.Context, localCfg config.LocalConfig) ([]relayBundleRow, error) {
 	if localCfg.RelayEntryID == "" {
 		return nil, nil
 	}
@@ -500,27 +667,23 @@ func activeRelayHeadCandidates(ctx context.Context, localCfg config.LocalConfig)
 	if err != nil {
 		return nil, err
 	}
-	rows, err = selectPullBundleRows(localCfg.DisplayName, rows)
+	return selectPullBundleRows(localCfg.DisplayName, rows)
+}
+
+func activeRelayHeadCandidates(ctx context.Context, localCfg config.LocalConfig) ([]relayHeadCandidate, error) {
+	rows, err := activeRelayBundleRows(ctx, localCfg)
 	if err != nil {
 		return nil, err
 	}
-	if len(rows) == 0 {
-		return nil, nil
-	}
-	repo := relayRepository{
-		RootSHA:      localCfg.RootSHA,
-		DisplayName:  localCfg.DisplayName,
-		RelayEntryID: localCfg.RelayEntryID,
-	}
+	return relayHeadCandidatesFromRows(rows), nil
+}
+
+func relayHeadCandidatesFromRows(rows []relayBundleRow) []relayHeadCandidate {
 	candidates := make([]relayHeadCandidate, 0, len(rows))
 	for _, row := range rows {
-		bundle, err := downloadRestoreBundle(ctx, repo, row)
-		if err != nil {
-			return nil, err
-		}
-		head, err := remoteHeadFromBundles([]downloadedRestoreBundle{bundle})
-		if err != nil {
-			return nil, err
+		head := relayHeadFromBundleRow(row)
+		if head == "" {
+			continue
 		}
 		candidates = append(candidates, relayHeadCandidate{
 			Head:      head,
@@ -529,7 +692,7 @@ func activeRelayHeadCandidates(ctx context.Context, localCfg config.LocalConfig)
 			CreatedAt: row.CreatedAt,
 		})
 	}
-	return candidates, nil
+	return candidates
 }
 
 func repairLedgerForRelayHeadIfNeeded(repoPath string, ledger workspace.Ledger, localHead, relayHead string) (workspace.Ledger, bool, error) {

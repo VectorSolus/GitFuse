@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"io"
 	"net/http"
@@ -420,6 +421,273 @@ func TestPullMissingPayloadDoesNotReportSuccessOrUpdateLedger(t *testing.T) {
 	}
 }
 
+func TestReachableRelayHeadWithMissingPayloadNoopsAndRepairsLedger(t *testing.T) {
+	t.Setenv("GITFUSE_RELAY_URL", "http://phase22.test")
+	t.Setenv("GITFUSE_TEST_TOKEN", "pull-token")
+	t.Setenv("GITFUSE_HOME", t.TempDir())
+
+	repoPath := newPullGitRepo(t, "device1", "main")
+	initial := commitPullFile(t, repoPath, "README.md", "initial\n", "initial commit", time.Unix(1, 0))
+	second := commitPullFile(t, repoPath, "app.txt", "second\n", "second commit", time.Unix(2, 0))
+	secondBundle := mustCreatePullBundle(t, repoPath, initial)
+
+	relay := newPullRelayFixture(relayRepository{
+		ID:           "repo-phase22-id",
+		UserID:       "user-id",
+		RootSHA:      initial,
+		DisplayName:  "repo-phase22",
+		RemoteURL:    "",
+		RelayEntryID: "repo-phase22-relay",
+	})
+	relay.addBundle(relay.repo.RelayEntryID, "bundle-second", "device-1", secondBundle, time.Unix(10, 0))
+	relay.missingPayloads["bundle-second"] = true
+	var upload syncUploadCapture
+	installPhase17RelayTransport(t, relay, &upload)
+
+	resetBehindLedger := func() {
+		t.Helper()
+		writePullMetadata(t, repoPath, relay.repo, initial, "")
+	}
+	assertLedgerRepaired := func(context string) {
+		t.Helper()
+		ledger, err := workspace.ReadLedger(repoPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ledger.SyncedHead != second {
+			t.Fatalf("%s ledger synced head = %s, want %s", context, ledger.SyncedHead, second)
+		}
+		if ledger.PreviousSyncedHead != initial {
+			t.Fatalf("%s ledger previous synced head = %s, want %s", context, ledger.PreviousSyncedHead, initial)
+		}
+	}
+
+	resetBehindLedger()
+	var statusOutput bytes.Buffer
+	if err := runCommandInDir(t, repoPath, &statusOutput, func(cmd *cobra.Command) error {
+		return runStatus(cmd, statusOptions{})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(statusOutput.String(), "Commits ahead: 0") {
+		t.Fatalf("status output = %q, want zero commits ahead", statusOutput.String())
+	}
+	assertLedgerRepaired("status")
+
+	resetBehindLedger()
+	var logOutput bytes.Buffer
+	if err := runCommandInDir(t, repoPath, &logOutput, func(cmd *cobra.Command) error {
+		return runLog(cmd)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertLogContains(t, logOutput.String(), "synced", second, "second commit")
+	if strings.Contains(logOutput.String(), "local-only") {
+		t.Fatalf("log output showed local-only commits despite reachable relay head:\n%s", logOutput.String())
+	}
+	assertLedgerRepaired("log")
+
+	resetBehindLedger()
+	var pullOutput bytes.Buffer
+	if err := runCommandInDir(t, repoPath, &pullOutput, func(cmd *cobra.Command) error {
+		return runPull(cmd, pullOptions{})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(pullOutput.String(), "No new commits to pull.") {
+		t.Fatalf("pull output = %q, want no-op", pullOutput.String())
+	}
+	assertLedgerRepaired("pull")
+
+	resetBehindLedger()
+	upload.calls = 0
+	var syncOutput bytes.Buffer
+	if err := runCommandInDir(t, repoPath, &syncOutput, func(cmd *cobra.Command) error {
+		return runSync(context.Background(), cmd, syncOptions{}, "")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(syncOutput.String(), "No commits to sync.") {
+		t.Fatalf("sync output = %q, want no-op", syncOutput.String())
+	}
+	if upload.calls != 0 {
+		t.Fatalf("sync upload calls = %d, want 0", upload.calls)
+	}
+	assertLedgerRepaired("sync")
+	assertRestoredHead(t, repoPath, second)
+	assertCleanWorktree(t, repoPath)
+	assertGitfuseNotTrackedOrStaged(t, repoPath)
+}
+
+func TestLegacyRelayMissingPayloadNoopsWhenLedgerHeadIsCurrent(t *testing.T) {
+	t.Setenv("GITFUSE_RELAY_URL", "http://phase22-legacy.test")
+	t.Setenv("GITFUSE_TEST_TOKEN", "pull-token")
+	t.Setenv("GITFUSE_HOME", t.TempDir())
+
+	repoPath := newPullGitRepo(t, "device1", "main")
+	initial := commitPullFile(t, repoPath, "README.md", "initial\n", "initial commit", time.Unix(1, 0))
+	second := commitPullFile(t, repoPath, "app.txt", "second\n", "second commit", time.Unix(2, 0))
+	secondBundle := mustCreatePullBundle(t, repoPath, initial)
+
+	relay := newPullRelayFixture(relayRepository{
+		ID:           "repo-legacy-id",
+		UserID:       "user-id",
+		RootSHA:      initial,
+		DisplayName:  "repo-legacy",
+		RemoteURL:    "",
+		RelayEntryID: "repo-legacy-relay",
+	})
+	relay.addLegacyBundle(relay.repo.RelayEntryID, "bundle-legacy", "device-1", secondBundle, time.Unix(10, 0))
+	relay.missingPayloads["bundle-legacy"] = true
+	var upload syncUploadCapture
+	installPhase17RelayTransport(t, relay, &upload)
+	writePullMetadata(t, repoPath, relay.repo, second, initial)
+
+	var pullOutput bytes.Buffer
+	if err := runCommandInDir(t, repoPath, &pullOutput, func(cmd *cobra.Command) error {
+		return runPull(cmd, pullOptions{})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(pullOutput.String(), "No new commits to pull.") {
+		t.Fatalf("pull output = %q, want no-op", pullOutput.String())
+	}
+
+	var syncOutput bytes.Buffer
+	if err := runCommandInDir(t, repoPath, &syncOutput, func(cmd *cobra.Command) error {
+		return runSync(context.Background(), cmd, syncOptions{}, "")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(syncOutput.String(), "No commits to sync.") {
+		t.Fatalf("sync output = %q, want no-op", syncOutput.String())
+	}
+	if upload.calls != 0 {
+		t.Fatalf("sync upload calls = %d, want 0", upload.calls)
+	}
+	assertRestoredHead(t, repoPath, second)
+	assertCleanWorktree(t, repoPath)
+	assertGitfuseNotTrackedOrStaged(t, repoPath)
+}
+
+func TestLegacyRelayMissingPayloadRepairsStalePulledLedgerWithoutFalseSync(t *testing.T) {
+	t.Setenv("GITFUSE_RELAY_URL", "http://phase22-device2.test")
+	t.Setenv("GITFUSE_TEST_TOKEN", "pull-token")
+	t.Setenv("GITFUSE_HOME", t.TempDir())
+
+	repoPath := newPullGitRepo(t, "device2", "main")
+	initial := commitPullFile(t, repoPath, "README.md", "initial\n", "initial commit", time.Unix(1, 0))
+	base := commitPullFile(t, repoPath, "file4.txt", "phase 18\n", "device 2 phase 18 commit", time.Unix(2, 0))
+	remote := commitPullFile(t, repoPath, "file5-device2.txt", "device 2 remote\n", "device 2 phase 19 remote commit", time.Unix(3, 0))
+	resolved := commitPullFile(t, repoPath, "file5-device1.txt", "device 1 local\n", "device 1 phase 19 local commit", time.Unix(4, 0))
+	resolvedBundle := mustCreatePullBundle(t, repoPath, base)
+	lastPullAt := time.Unix(20, 0).UTC().Format(time.RFC3339)
+
+	relay := newPullRelayFixture(relayRepository{
+		ID:           "repo-device2-id",
+		UserID:       "user-id",
+		RootSHA:      initial,
+		DisplayName:  "repo-device2",
+		RemoteURL:    "",
+		RelayEntryID: "repo-device2-relay",
+	})
+	relay.addLegacyBundle(relay.repo.RelayEntryID, "bundle-resolved-legacy", "device-1", resolvedBundle, time.Unix(10, 0))
+	relay.missingPayloads["bundle-resolved-legacy"] = true
+	var upload syncUploadCapture
+	installPhase17RelayTransport(t, relay, &upload)
+
+	resetStaleLedger := func() {
+		t.Helper()
+		if _, err := config.WriteLocalConfig(repoPath, config.LocalConfig{
+			RootSHA:      relay.repo.RootSHA,
+			RelayEntryID: relay.repo.RelayEntryID,
+			Account:      "tester",
+			DisplayName:  relay.repo.DisplayName,
+			RemoteURL:    relay.repo.RemoteURL,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := workspace.WriteLedger(repoPath, workspace.Ledger{
+			SyncedHead: base,
+			LastPullAt: lastPullAt,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertLedgerResolved := func(context string) {
+		t.Helper()
+		ledger, err := workspace.ReadLedger(repoPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ledger.SyncedHead != resolved {
+			t.Fatalf("%s ledger synced head = %s, want %s", context, ledger.SyncedHead, resolved)
+		}
+		if ledger.PreviousSyncedHead != base {
+			t.Fatalf("%s ledger previous synced head = %s, want %s", context, ledger.PreviousSyncedHead, base)
+		}
+	}
+
+	resetStaleLedger()
+	var statusOutput bytes.Buffer
+	if err := runCommandInDir(t, repoPath, &statusOutput, func(cmd *cobra.Command) error {
+		return runStatus(cmd, statusOptions{})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(statusOutput.String(), "Commits ahead: 0") {
+		t.Fatalf("status output = %q, want zero ahead", statusOutput.String())
+	}
+	assertLedgerResolved("status")
+
+	resetStaleLedger()
+	var logOutput bytes.Buffer
+	if err := runCommandInDir(t, repoPath, &logOutput, func(cmd *cobra.Command) error {
+		return runLog(cmd)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertLogContains(t, logOutput.String(), "synced", resolved, "device 1 phase 19 local commit")
+	assertLogContains(t, logOutput.String(), "synced", remote, "device 2 phase 19 remote commit")
+	if strings.Contains(logOutput.String(), "local-only") {
+		t.Fatalf("log output showed local-only commits despite repaired legacy pull state:\n%s", logOutput.String())
+	}
+	assertLedgerResolved("log")
+
+	resetStaleLedger()
+	var pullOutput bytes.Buffer
+	if err := runCommandInDir(t, repoPath, &pullOutput, func(cmd *cobra.Command) error {
+		return runPull(cmd, pullOptions{})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(pullOutput.String(), "No new commits to pull.") {
+		t.Fatalf("pull output = %q, want no-op", pullOutput.String())
+	}
+	assertLedgerResolved("pull")
+
+	resetStaleLedger()
+	upload.calls = 0
+	var syncOutput bytes.Buffer
+	if err := runCommandInDir(t, repoPath, &syncOutput, func(cmd *cobra.Command) error {
+		return runSync(context.Background(), cmd, syncOptions{}, "")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(syncOutput.String(), "No commits to sync.") {
+		t.Fatalf("sync output = %q, want no-op", syncOutput.String())
+	}
+	if upload.calls != 0 {
+		t.Fatalf("sync upload calls = %d, want 0", upload.calls)
+	}
+	assertLedgerResolved("sync")
+	assertRestoredHead(t, repoPath, resolved)
+	assertFileContent(t, repoPath, "file5-device1.txt", "device 1 local\n")
+	assertFileContent(t, repoPath, "file5-device2.txt", "device 2 remote\n")
+	assertCleanWorktree(t, repoPath)
+	assertGitfuseNotTrackedOrStaged(t, repoPath)
+}
+
 type pullRelayFixture struct {
 	repo            relayRepository
 	repos           map[string]relayRepository
@@ -456,9 +724,30 @@ func (fixture *pullRelayFixture) addBundle(relayEntryID, id, deviceID string, bu
 			ParentBundleID: "",
 			CreatedAt:      createdAt.UTC().Format(time.RFC3339),
 			ExpiresAt:      time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
+			HeadSHA:        bundle.Manifest.HeadSHA,
+			Commits:        relayBundleRowCommits(bundle.Manifest.Commits),
 		},
 		payload: bundle.Bytes,
 	})
+}
+
+func (fixture *pullRelayFixture) addLegacyBundle(relayEntryID, id, deviceID string, bundle gfgit.BundlePayload, createdAt time.Time) {
+	fixture.addBundle(relayEntryID, id, deviceID, bundle, createdAt)
+	bundles := fixture.bundles[relayEntryID]
+	index := len(bundles) - 1
+	bundles[index].row.HeadSHA = ""
+	bundles[index].row.HeadSHAUpper = ""
+	bundles[index].row.HeadSHASnake = ""
+	bundles[index].row.Commits = nil
+	fixture.bundles[relayEntryID] = bundles
+}
+
+func relayBundleRowCommits(commits []gfgit.BundleCommit) []relayBundleCommitRow {
+	rows := make([]relayBundleCommitRow, 0, len(commits))
+	for _, commit := range commits {
+		rows = append(rows, relayBundleCommitRow{SHA: commit.SHA})
+	}
+	return rows
 }
 
 func installPullRelayTransport(t *testing.T, fixture *pullRelayFixture) {

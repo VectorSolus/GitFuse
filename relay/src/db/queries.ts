@@ -14,6 +14,7 @@ import {
   PLAN_LIMITS,
   accountLimitsForTier,
   accountTierForPlan,
+  effectivePlanTier,
   type AccountLimitsResponse,
   type AccountTier,
   type LimitName,
@@ -39,7 +40,13 @@ type UserRecord = {
   id: string;
   githubUsername: string;
   email: string;
-  tier: AccountTier;
+};
+
+type PlanRecord = {
+  tier: PlanTier;
+  requestedTier: PlanTier;
+  paymentProvider: string | null;
+  subscriptionStatus: string | null;
 };
 
 type AuthSession = {
@@ -55,10 +62,12 @@ type AuthSession = {
 };
 
 const users = new Map<string, UserRecord>();
+const userPlans = new Map<string, PlanRecord>();
 const devices = new Map<string, Device & { tokenHash: string; token: string }>();
 const repositories = new Map<string, Repository>();
 const bundles = new Map<string, Bundle>();
 const syncEvents: SyncEvent[] = [];
+const syncEventCommits = new Map<string, SyncedCommit[]>();
 const authSessions = new Map<string, AuthSession>();
 
 function nowIso() {
@@ -74,27 +83,49 @@ function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
+function inMemoryEffectiveTier(userId: string): PlanTier {
+  const plan = userPlans.get(userId);
+  return plan
+    ? effectivePlanTier({
+        tier: plan.tier,
+        requestedTier: plan.requestedTier,
+        paymentProvider: plan.paymentProvider,
+        subscriptionStatus: plan.subscriptionStatus
+      })
+    : "free";
+}
+
 async function tierForUser(userId: string) {
   const databaseUser = await findRelayDatabaseUserById(userId);
-  const tier = databaseUser?.tier ?? users.get(userId)?.tier ?? "free";
-  return tier === "paid" ? "pro" : tier;
+  if (databaseUser) return databaseUser.tier;
+  return inMemoryEffectiveTier(userId);
 }
 
 async function accountTierForUser(userId: string): Promise<AccountTier> {
   const sql = getRelaySql();
   if (sql) {
-    const [row] = await sql<{ tier: AccountTier | null; plan_tier: PlanTier | null }[]>`
-      select users.tier, plans.tier as plan_tier
-      from users
-      left join plans on plans.user_id = users.id
-      where users.id = ${userId}
+    const [row] = await sql<{
+      tier: PlanTier | null;
+      requested_tier: PlanTier | null;
+      payment_provider: string | null;
+      subscription_status: string | null;
+    }[]>`
+      select tier, requested_tier, payment_provider, subscription_status
+      from plans
+      where user_id = ${userId}
       limit 1
     `;
-    if (row?.tier) return row.tier;
-    return accountTierForPlan(row?.plan_tier);
+    return accountTierForPlan(
+      effectivePlanTier({
+        tier: row?.tier,
+        requestedTier: row?.requested_tier,
+        paymentProvider: row?.payment_provider,
+        subscriptionStatus: row?.subscription_status
+      })
+    );
   }
 
-  return users.get(userId)?.tier ?? "free";
+  return accountTierForPlan(await tierForUser(userId));
 }
 
 function numericLimit(value: number | "unlimited") {
@@ -174,6 +205,29 @@ function mapBundle(row: {
   };
 }
 
+function mapSyncedCommit(row: {
+  sha: string;
+  message: string;
+  author_name: string | null;
+  author_email: string | null;
+  authored_at: Date | string | null;
+  committed_at: Date | string | null;
+}): SyncedCommit {
+  return {
+    sha: row.sha,
+    message: row.message,
+    authorName: row.author_name,
+    authorEmail: row.author_email,
+    authoredAt: toIso(row.authored_at),
+    committedAt: toIso(row.committed_at)
+  };
+}
+
+function withBundleMetadata(bundle: Bundle, commits: SyncedCommit[] = []) {
+  const headSha = commits.length > 0 ? commits[commits.length - 1]?.sha ?? null : null;
+  return { ...bundle, headSha, commits };
+}
+
 function mapDevice(row: {
   id: string;
   user_id: string;
@@ -237,7 +291,9 @@ export async function checkDeviceLimitForApproval(
       (record) => record.githubUsername === githubUsername
     );
   if (!user) return { ok: true };
-  const accountTier = accountTierForPlan(user.tier);
+  const accountTier = accountTierForPlan(
+    databaseUser ? databaseUser.tier : await tierForUser(user.id)
+  );
   const max = accountLimitsForTier(accountTier).devices.limit;
   if (max === null) return { ok: true };
   const sql = getRelaySql();
@@ -376,7 +432,30 @@ export async function createAuthSession(code: string, deviceName: string, device
   return session;
 }
 
-export async function approveAuthSession(code: string, githubUsername: string, email = `${githubUsername}@users.noreply.github.com`) {
+function mapAuthSession(row: {
+  id: string;
+  code: string;
+  user_id: string | null;
+  device_id?: string | null;
+  device_name: string;
+  approved_at: Date | string | null;
+  expires_at: Date | string;
+  created_at: Date | string;
+}): AuthSession {
+  return {
+    id: row.id,
+    code: row.code,
+    userId: row.user_id,
+    deviceId: row.device_id ?? null,
+    deviceName: row.device_name,
+    approvedAt: toIso(row.approved_at),
+    expiresAt: toIso(row.expires_at) ?? "",
+    createdAt: toIso(row.created_at) ?? "",
+    token: null
+  };
+}
+
+async function findAuthSession(code: string) {
   let session = authSessions.get(code);
   const sql = getRelaySql();
   if (!session && sql) {
@@ -396,21 +475,28 @@ export async function approveAuthSession(code: string, githubUsername: string, e
       limit 1
     `;
     if (row) {
-      session = {
-        id: row.id,
-        code: row.code,
-        userId: row.user_id,
-        deviceId: row.device_id ?? null,
-        deviceName: row.device_name,
-        approvedAt: toIso(row.approved_at),
-        expiresAt: toIso(row.expires_at) ?? "",
-        createdAt: toIso(row.created_at) ?? "",
-        token: null
-      };
+      session = mapAuthSession(row);
       authSessions.set(code, session);
     }
   }
   if (!session || new Date(session.expiresAt).getTime() < Date.now()) return null;
+  return session;
+}
+
+export async function findAuthSessionForApproval(code: string) {
+  const session = await findAuthSession(code);
+  if (!session) return null;
+  return {
+    code: session.code,
+    deviceId: session.deviceId,
+    deviceName: session.deviceName
+  };
+}
+
+export async function approveAuthSession(code: string, githubUsername: string, email = `${githubUsername}@users.noreply.github.com`) {
+  const session = await findAuthSession(code);
+  const sql = getRelaySql();
+  if (!session) return null;
 
   const databaseUser = await ensureRelayDatabaseUser(
     githubUsername,
@@ -420,16 +506,23 @@ export async function approveAuthSession(code: string, githubUsername: string, e
     ? {
         id: databaseUser.id,
         githubUsername: databaseUser.githubUsername,
-        email: databaseUser.email,
-        tier: accountTierForPlan(databaseUser.tier)
+        email: databaseUser.email
       }
     : [...users.values()].find(
         (record) => record.githubUsername === githubUsername
       );
   if (!user) {
-    user = { id: randomUUID(), githubUsername, email, tier: "free" };
+    user = { id: randomUUID(), githubUsername, email };
   }
   users.set(user.id, user);
+  if (!userPlans.has(user.id)) {
+    userPlans.set(user.id, {
+      tier: "free",
+      requestedTier: "free",
+      paymentProvider: null,
+      subscriptionStatus: null
+    });
+  }
 
   const token = `gf_${randomBytes(32).toString("base64url")}`;
   const device: Device & { tokenHash: string; token: string } = {
@@ -486,13 +579,9 @@ export async function approveAuthSession(code: string, githubUsername: string, e
   return { session, user, token };
 }
 
-export function authSessionDeviceId(code: string) {
-  return authSessions.get(code)?.deviceId ?? null;
-}
-
 export async function pollAuthSession(code: string) {
-  const session = authSessions.get(code);
-  if (!session || new Date(session.expiresAt).getTime() < Date.now()) return null;
+  const session = await findAuthSession(code);
+  if (!session) return null;
   if (!session.approvedAt || !session.userId || !session.token) return { approved: false as const };
   const user = users.get(session.userId);
   return {
@@ -651,10 +740,23 @@ export async function listBundles(repositoryId: string) {
         and status = 'active'
       order by created_at asc
     `;
-    return rows.map(mapBundle);
+    const result = [];
+    for (const row of rows) {
+      const bundle = mapBundle(row);
+      const commitRows = await sql<Parameters<typeof mapSyncedCommit>[0][]>`
+        select sha, message, author_name, author_email, authored_at, committed_at
+        from sync_event_commits
+        where sync_event_id = ${bundle.id}
+        order by committed_at asc nulls last, created_at asc
+      `;
+      result.push(withBundleMetadata(bundle, commitRows.map(mapSyncedCommit)));
+    }
+    return result;
   }
 
-  return [...bundles.values()].filter((bundle) => bundle.repositoryId === repositoryId && bundle.status === "active");
+  return [...bundles.values()]
+    .filter((bundle) => bundle.repositoryId === repositoryId && bundle.status === "active")
+    .map((bundle) => withBundleMetadata(bundle, syncEventCommits.get(bundle.id) ?? []));
 }
 
 export async function findBundle(bundleId: string) {
@@ -727,10 +829,10 @@ export async function findExpiredFreeBundles(now = new Date(), retentionDays = 7
              bundles.expires_at
       from bundles
       join repositories on repositories.id = bundles.repository_id
-      join users on users.id = repositories.user_id
+      join plans on plans.user_id = repositories.user_id
       where bundles.status = 'active'
         and bundles.created_at < ${cutoff.toISOString()}
-        and users.tier = 'free'
+        and plans.tier = 'free'
     `;
     return rows.map(mapBundle);
   }
@@ -740,7 +842,7 @@ export async function findExpiredFreeBundles(now = new Date(), retentionDays = 7
     if (new Date(bundle.createdAt).getTime() >= cutoff.getTime()) return false;
     const repo = repositories.get(bundle.repositoryId);
     if (!repo) return false;
-    return users.get(repo.userId)?.tier === "free";
+    return accountTierForPlan(inMemoryEffectiveTier(repo.userId)) === "free";
   });
 }
 
@@ -865,13 +967,19 @@ export async function createBundleAndSyncEvent(input: {
   const sql = getRelaySql();
   if (!sql) {
     const bundle = await createBundle(input);
-    const event = await recordSyncEvent({
+    const event: SyncEvent = {
+      id: bundle.id,
       repositoryId: input.repositoryId,
       deviceId: input.deviceId,
       eventType: "sync",
       commitCount: input.commitCount,
-      bundleSizeBytes: input.sizeBytes
-    });
+      bundleSizeBytes: input.sizeBytes,
+      createdAt: nowIso()
+    };
+    syncEvents.push(event);
+    syncEventCommits.set(event.id, input.commits);
+    const repo = repositories.get(input.repositoryId);
+    if (repo) repo.lastSyncedAt = event.createdAt;
     return { bundle, event };
   }
 
@@ -912,6 +1020,7 @@ export async function createBundleAndSyncEvent(input: {
       created_at: Date | string;
     }[]>`
       insert into sync_events (
+        id,
         repository_id,
         device_id,
         event_type,
@@ -919,6 +1028,7 @@ export async function createBundleAndSyncEvent(input: {
         bundle_size_bytes
       )
       values (
+        ${bundleRow.id},
         ${input.repositoryId},
         ${input.deviceId},
         'sync',
@@ -984,7 +1094,10 @@ export async function listDevices(userId: string) {
       select id, user_id, name, public_key_fingerprint, first_synced_at, last_synced_at, last_active_at, created_at, revoked_at
       from devices
       where user_id = ${userId}
-      order by revoked_at nulls first, last_active_at desc nulls last, created_at desc
+      order by revoked_at nulls first,
+               last_active_at desc nulls last,
+               created_at desc,
+               id asc
     `;
     return rows.map(mapDevice);
   }
@@ -1049,27 +1162,43 @@ export async function getAccountLimits(userId: string): Promise<AccountLimitsRes
   };
 }
 
-export async function setAccountTierForTest(userId: string, tier: AccountTier) {
+function planTierForAccountTier(tier: AccountTier | PlanTier): PlanTier {
+  if (tier === "paid") return "pro";
+  return tier;
+}
+
+export async function setAccountTierForTest(userId: string, tier: AccountTier | PlanTier) {
+  const planTier = planTierForAccountTier(tier);
   const sql = getRelaySql();
   if (sql) {
     await sql`
-      update users
-      set tier = ${tier},
-          tier_updated_at = now(),
-          updated_at = now()
-      where id = ${userId}
+      insert into plans (user_id, tier, requested_tier, team_seat_count)
+      values (${userId}, ${planTier}, ${planTier}, 1)
+      on conflict (user_id)
+      do update set
+        tier = excluded.tier,
+        requested_tier = excluded.requested_tier,
+        payment_provider = null,
+        subscription_status = null,
+        updated_at = now()
     `;
     return;
   }
 
-  const user = users.get(userId);
-  if (user) user.tier = tier;
+  if (users.has(userId)) {
+    userPlans.set(userId, {
+      tier: planTier,
+      requestedTier: planTier,
+      paymentProvider: null,
+      subscriptionStatus: null
+    });
+  }
 }
 
 export async function setAccountTierByIdentityForTest(
   githubUsername: string,
   email: string,
-  tier: AccountTier
+  tier: AccountTier | PlanTier
 ) {
   const databaseUser = await findRelayDatabaseUserByIdentity(githubUsername, email);
   if (databaseUser) {
@@ -1081,7 +1210,7 @@ export async function setAccountTierByIdentityForTest(
     (record) => record.githubUsername === githubUsername || record.email.toLowerCase() === email.toLowerCase()
   );
   if (!user) return false;
-  user.tier = tier;
+  await setAccountTierForTest(user.id, tier);
   return true;
 }
 
@@ -1095,10 +1224,15 @@ export async function seedLimitScenario(input: {
   const user: UserRecord = {
     id: randomUUID(),
     githubUsername: input.username,
-    email: `${input.username}@example.com`,
-    tier: accountTierForPlan(input.tier)
+    email: `${input.username}@example.com`
   };
   users.set(user.id, user);
+  userPlans.set(user.id, {
+    tier: input.tier ?? "free",
+    requestedTier: input.tier ?? "free",
+    paymentProvider: null,
+    subscriptionStatus: null
+  });
 
   const token = `gf_${randomBytes(32).toString("base64url")}`;
   const primaryDevice: Device & { tokenHash: string; token: string } = {
@@ -1174,10 +1308,15 @@ export async function seedCleanupScenario(input: { username: string }) {
   const user: UserRecord = {
     id: randomUUID(),
     githubUsername: input.username,
-    email: `${input.username}@example.com`,
-    tier: "free"
+    email: `${input.username}@example.com`
   };
   users.set(user.id, user);
+  userPlans.set(user.id, {
+    tier: "free",
+    requestedTier: "free",
+    paymentProvider: null,
+    subscriptionStatus: null
+  });
 
   const deviceToken = `gf_${randomBytes(32).toString("base64url")}`;
   const device: Device & { tokenHash: string; token: string } = {
@@ -1213,10 +1352,15 @@ export async function seedCleanupScenario(input: { username: string }) {
   const paidUser: UserRecord = {
     id: randomUUID(),
     githubUsername: `${input.username}-paid`,
-    email: `${input.username}-paid@example.com`,
-    tier: "paid"
+    email: `${input.username}-paid@example.com`
   };
   users.set(paidUser.id, paidUser);
+  userPlans.set(paidUser.id, {
+    tier: "pro",
+    requestedTier: "pro",
+    paymentProvider: null,
+    subscriptionStatus: null
+  });
   const paidDeviceToken = `gf_${randomBytes(32).toString("base64url")}`;
   const paidDevice: Device & { tokenHash: string; token: string } = {
     id: randomUUID(),

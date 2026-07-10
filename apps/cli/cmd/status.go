@@ -77,7 +77,7 @@ func collectRepoStatus(repoPath string) (repoStatus, error) {
 	if err != nil {
 		return repoStatus{}, err
 	}
-	if relayCandidates, err := activeRelayHeadCandidates(context.Background(), localCfg); err == nil && len(relayCandidates) > 0 {
+	if relayRows, relayCandidates, err := activeRelayMetadata(context.Background(), localCfg); err == nil && len(relayRows) > 0 {
 		head, err := currentHead(repoPath)
 		if err != nil {
 			return repoStatus{}, err
@@ -91,9 +91,20 @@ func collectRepoStatus(repoPath string) (repoStatus, error) {
 			return repoStatus{}, err
 		}
 		if len(blockers) == 0 {
-			if syncedHead, err := effectiveRelaySyncBase(repoPath, ledger, head, relayCandidates); err != nil {
+			if len(relayCandidates) == 0 {
+				repaired, _, err := repairLedgerToLocalHeadForLegacyRelayRowsIfSafe(repoPath, ledger, head, relayRows, relayCandidates)
+				if err != nil {
+					return repoStatus{}, err
+				}
+				ledger = repaired
+			} else if syncedHead, err := effectiveRelaySyncBase(repoPath, ledger, head, relayCandidates); err != nil {
 				return repoStatus{}, err
 			} else {
+				repaired, _, err := advanceLedgerToReachableRelayHeadIfNeeded(repoPath, ledger, head, syncedHead)
+				if err != nil {
+					return repoStatus{}, err
+				}
+				ledger = repaired
 				ledger.SyncedHead = syncedHead
 			}
 		}

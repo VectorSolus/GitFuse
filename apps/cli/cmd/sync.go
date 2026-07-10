@@ -76,7 +76,7 @@ func runSync(ctx context.Context, cmd *cobra.Command, opts syncOptions, commitRa
 	if err != nil {
 		return err
 	}
-	relayCandidates, err := activeRelayHeadCandidates(ctx, localCfg)
+	relayRows, relayCandidates, err := activeRelayMetadata(ctx, localCfg)
 	if err != nil {
 		return fmt.Errorf("validate relay head before sync: %w", err)
 	}
@@ -95,11 +95,19 @@ func runSync(ctx context.Context, cmd *cobra.Command, opts syncOptions, commitRa
 		fmt.Fprintln(cmd.OutOrStdout(), "gitfuse is paused. Run 'gitfuse resume' to sync again.")
 		return nil
 	}
+	ledger, _, err = repairLedgerToLocalHeadForLegacyRelayRowsIfSafe(repoPath, ledger, head, relayRows, relayCandidates)
+	if err != nil {
+		return err
+	}
 	syncedHead := ledger.SyncedHead
 	if opts.all {
 		syncedHead = ""
 	} else {
 		syncedHead, err = effectiveRelaySyncBase(repoPath, ledger, head, relayCandidates)
+		if err != nil {
+			return err
+		}
+		ledger, _, err = advanceLedgerToReachableRelayHeadIfNeeded(repoPath, ledger, head, syncedHead)
 		if err != nil {
 			return err
 		}
@@ -145,6 +153,7 @@ func runSync(ctx context.Context, cmd *cobra.Command, opts syncOptions, commitRa
 		CommitCount:  strconv.Itoa(len(bundle.Manifest.Commits)),
 		SizeBytes:    strconv.Itoa(len(encrypted)),
 		Payload:      encrypted,
+		Commits:      relayCommitsFromBundle(bundle.Manifest.Commits),
 	})
 	if err != nil {
 		if message != "" {
@@ -161,6 +170,24 @@ func runSync(ctx context.Context, cmd *cobra.Command, opts syncOptions, commitRa
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Synced %d commit(s).\n", len(bundle.Manifest.Commits))
 	return nil
+}
+
+func relayCommitsFromBundle(commits []gfgit.BundleCommit) []relay.SyncedCommit {
+	if len(commits) == 0 {
+		return nil
+	}
+	converted := make([]relay.SyncedCommit, 0, len(commits))
+	for _, commit := range commits {
+		converted = append(converted, relay.SyncedCommit{
+			SHA:         commit.SHA,
+			Message:     commit.Message,
+			AuthorName:  commit.AuthorName,
+			AuthorEmail: commit.AuthorEmail,
+			AuthoredAt:  commit.AuthoredAt,
+			CommittedAt: commit.CommittedAt,
+		})
+	}
+	return converted
 }
 
 func printSubmoduleWarningOnce(cmd *cobra.Command, repoPath string, submodules []gfgit.BundleSubmodule, ledger *workspace.Ledger) error {
