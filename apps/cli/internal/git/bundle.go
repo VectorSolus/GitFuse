@@ -74,6 +74,10 @@ func CreateIncrementalBundle(path, syncedHead string) (BundlePayload, error) {
 	if head.Name().IsBranch() {
 		headRef = head.Name().String()
 	}
+	nativeTarget := headRef
+	if nativeTarget == "" {
+		nativeTarget = "HEAD"
+	}
 
 	commits, err := commitsAfter(repo, head.Hash(), syncedHead)
 	if err != nil {
@@ -111,7 +115,7 @@ func CreateIncrementalBundle(path, syncedHead string) (BundlePayload, error) {
 		})
 	}
 	if len(commits) > 0 {
-		nativeBundle, err := createNativeGitBundle(path, headRef, head.Hash().String(), syncedHead)
+		nativeBundle, err := createNativeGitBundle(path, nativeTarget, syncedHead, len(commits))
 		if err != nil {
 			return BundlePayload{}, err
 		}
@@ -146,22 +150,20 @@ func CommitCountAfter(path, syncedHead string) (int, error) {
 	return len(commits), nil
 }
 
-func createNativeGitBundle(repoPath, headRef, headSHA, syncedHead string) ([]byte, error) {
+func createNativeGitBundle(repoPath, target, syncedHead string, expectedCommitCount int) ([]byte, error) {
 	tmpDir, err := os.MkdirTemp("", "gitfuse-native-bundle-*")
 	if err != nil {
 		return nil, fmt.Errorf("create native bundle temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	target := headRef
-	if target == "" {
-		target = headSHA
-	}
 	if target == "" {
 		return nil, fmt.Errorf("create native git bundle: missing HEAD")
 	}
+	rangeDescription := target
 	if syncedHead != "" {
 		target = syncedHead + ".." + target
+		rangeDescription = target
 	}
 
 	out := filepath.Join(tmpDir, "restore.bundle")
@@ -171,6 +173,13 @@ func createNativeGitBundle(repoPath, headRef, headSHA, syncedHead string) ([]byt
 		detail := strings.TrimSpace(string(output))
 		if detail == "" {
 			detail = err.Error()
+		}
+		if expectedCommitCount > 0 && strings.Contains(detail, "Refusing to create empty bundle") {
+			return nil, fmt.Errorf(
+				"create native git bundle: internal consistency error: selected %d commit(s) for range %s, but git reported an empty bundle",
+				expectedCommitCount,
+				rangeDescription,
+			)
 		}
 		return nil, fmt.Errorf("create native git bundle: %s", detail)
 	}

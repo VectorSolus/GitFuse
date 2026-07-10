@@ -223,11 +223,7 @@ func downloadRestoreBundles(ctx context.Context, repo relayRepository) ([]downlo
 }
 
 func loadRestoreBundleRows(ctx context.Context, relayEntryID string) ([]relayBundleRow, error) {
-	relayURL, err := relayBaseURLOrError()
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, relayURL+"/v1/bundles/"+relayEntryID, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, relayBaseURL()+"/v1/bundles/"+relayEntryID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -293,17 +289,13 @@ func selectRestorableBundleRows(repoName string, rows []relayBundleRow) ([]relay
 }
 
 func downloadRestoreBundle(ctx context.Context, repo relayRepository, row relayBundleRow) (downloadedRestoreBundle, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, relayBaseURL()+"/v1/bundles/"+row.ID+"/download", nil)
+	if err != nil {
+		return downloadedRestoreBundle{}, err
+	}
 	token := deviceToken()
 	if token == "" {
-		return downloadedRestoreBundle{}, fmt.Errorf(notAuthenticatedMessage)
-	}
-	relayURL, err := relayBaseURLOrError()
-	if err != nil {
-		return downloadedRestoreBundle{}, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, relayURL+"/v1/bundles/"+row.ID+"/download", nil)
-	if err != nil {
-		return downloadedRestoreBundle{}, err
+		return downloadedRestoreBundle{}, fmt.Errorf("not authenticated; run 'gitfuse auth'")
 	}
 	req.Header.Set("authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)
@@ -459,6 +451,13 @@ func chooseRestoreBundleHead(manifest gfgit.BundleManifest, heads []bundleHead) 
 					expected = head.Hash
 				}
 				return head.Ref, expected, nil
+			}
+		}
+	}
+	if manifest.HeadSHA != "" {
+		for _, head := range heads {
+			if head.Ref != "" && head.Hash == manifest.HeadSHA {
+				return head.Ref, manifest.HeadSHA, nil
 			}
 		}
 	}

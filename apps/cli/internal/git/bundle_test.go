@@ -1,8 +1,11 @@
 package git
 
 import (
+	"encoding/base64"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +30,69 @@ func TestBundleDeltas(t *testing.T) {
 	}
 	if bundle.Manifest.Commits[0].SHA != want.String() {
 		t.Fatalf("bundle commit = %s, want %s", bundle.Manifest.Commits[0].SHA, want.String())
+	}
+	if bundle.Manifest.Commits[0].AuthorName != "gitfuse" {
+		t.Fatalf("author name = %q, want gitfuse", bundle.Manifest.Commits[0].AuthorName)
+	}
+	if bundle.Manifest.Commits[0].AuthorEmail != "test@gitfuse.dev" {
+		t.Fatalf("author email = %q, want test@gitfuse.dev", bundle.Manifest.Commits[0].AuthorEmail)
+	}
+	if bundle.Manifest.Commits[0].AuthoredAt != "1970-01-01T00:00:03Z" {
+		t.Fatalf("authored at = %q, want RFC3339 commit time", bundle.Manifest.Commits[0].AuthoredAt)
+	}
+	if bundle.Manifest.Commits[0].CommittedAt != "1970-01-01T00:00:03Z" {
+		t.Fatalf("committed at = %q, want RFC3339 commit time", bundle.Manifest.Commits[0].CommittedAt)
+	}
+}
+
+func TestBundleFromDetachedHead(t *testing.T) {
+	dir, repo, _ := testRepo(t)
+	synced := commitFile(t, dir, repo, "synced.txt", "synced\n", "synced", time.Unix(2, 0))
+	want := commitFile(t, dir, repo, "new.txt", "new\n", "new", time.Unix(3, 0))
+	runBundleGit(t, dir, "checkout", "--detach", want.String())
+
+	bundle, err := CreateIncrementalBundle(dir, synced.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bundle.Manifest.Commits) != 1 {
+		t.Fatalf("bundle commits = %d, want 1", len(bundle.Manifest.Commits))
+	}
+	if bundle.Manifest.Commits[0].SHA != want.String() {
+		t.Fatalf("bundle commit = %s, want %s", bundle.Manifest.Commits[0].SHA, want.String())
+	}
+	if bundle.Manifest.HeadRef != "" {
+		t.Fatalf("manifest head ref = %q, want empty for detached HEAD", bundle.Manifest.HeadRef)
+	}
+	native, err := base64.StdEncoding.DecodeString(bundle.Manifest.GitBundleBase64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativePath := filepath.Join(t.TempDir(), "restore.bundle")
+	if err := os.WriteFile(nativePath, native, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	heads := runBundleGitOutput(t, dir, "bundle", "list-heads", nativePath)
+	wantHead := want.String() + " HEAD"
+	if !strings.Contains(heads, wantHead) {
+		t.Fatalf("native bundle heads = %q, want %q", heads, wantHead)
+	}
+}
+
+func TestNativeBundleEmptyRangeMismatchHasClearError(t *testing.T) {
+	dir, repo, _ := testRepo(t)
+	synced := commitFile(t, dir, repo, "synced.txt", "synced\n", "synced", time.Unix(2, 0))
+	_ = commitFile(t, dir, repo, "new.txt", "new\n", "new", time.Unix(3, 0))
+
+	_, err := createNativeGitBundle(dir, synced.String(), synced.String(), 1)
+	if err == nil {
+		t.Fatal("native bundle creation unexpectedly succeeded with an empty range")
+	}
+	if !strings.Contains(err.Error(), "internal consistency error") {
+		t.Fatalf("error = %q, want internal consistency error", err.Error())
+	}
+	if strings.Contains(err.Error(), "fatal: Refusing to create empty bundle") {
+		t.Fatalf("error leaked raw git fatal: %q", err.Error())
 	}
 }
 
@@ -151,4 +217,20 @@ func commitSubmodule(t *testing.T, dir string, repo *gogit.Repository, path stri
 		t.Fatal(err)
 	}
 	return submoduleHash
+}
+
+func runBundleGit(t *testing.T, repoPath string, args ...string) {
+	t.Helper()
+	_ = runBundleGitOutput(t, repoPath, args...)
+}
+
+func runBundleGitOutput(t *testing.T, repoPath string, args ...string) string {
+	t.Helper()
+	fullArgs := append([]string{"-C", repoPath}, args...)
+	cmd := exec.Command("git", fullArgs...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+	}
+	return string(output)
 }

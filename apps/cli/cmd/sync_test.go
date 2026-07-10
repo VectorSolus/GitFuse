@@ -390,6 +390,142 @@ func TestSyncManualRebaseResolutionIgnoresStaleSelfRelayHead(t *testing.T) {
 	assertGitfuseNotTrackedOrStaged(t, device2)
 }
 
+func TestSyncAfterRebaseOntoImportedRemoteCommit(t *testing.T) {
+	t.Setenv("GITFUSE_RELAY_URL", "http://phase28.test")
+	t.Setenv("GITFUSE_TEST_TOKEN", "pull-token")
+	t.Setenv("GITFUSE_HOME", t.TempDir())
+
+	device1 := newPullGitRepo(t, "device1", "main")
+	initial := commitPullFile(t, device1, "file1.txt", "one\n", "initial commit", time.Unix(1, 0))
+	initialBundle := mustCreatePullBundle(t, device1, "")
+	base := commitPullFile(t, device1, "file2.txt", "base\n", "device 1 base commit", time.Unix(2, 0))
+	baseBundle := mustCreatePullBundle(t, device1, initial)
+
+	device2 := filepath.Join(t.TempDir(), "device2")
+	testGit(t, "", "clone", device1, device2)
+	testGit(t, device2, "config", "user.name", "gitfuse")
+	testGit(t, device2, "config", "user.email", "test@gitfuse.dev")
+	if err := excludeGitfuseMetadata(device2); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := syncRelayRepository("repo-phase28", initial)
+	relay := newPullRelayFixture(repo)
+	relay.addBundle(repo.RelayEntryID, "bundle-initial", "device-1", initialBundle, time.Unix(10, 0))
+	relay.addBundle(repo.RelayEntryID, "bundle-base", "device-1", baseBundle, time.Unix(20, 0))
+	var upload syncUploadCapture
+	installPhase17RelayTransport(t, relay, &upload)
+	writePullMetadata(t, device1, repo, base, initial)
+	writePullMetadata(t, device2, repo, base, initial)
+
+	remoteCommit := commitPullFile(t, device1, "remote.txt", "remote\n", "device 1 phase 27 remote commit", time.Unix(3, 0))
+	remoteBundle := mustCreatePullBundle(t, device1, base)
+	relay.addBundle(repo.RelayEntryID, "bundle-remote", "device-1", remoteBundle, time.Unix(30, 0))
+	localCommit := commitPullFile(t, device2, "local.txt", "local\n", "device 2 phase 27 local commit", time.Unix(4, 0))
+	if reachable, err := commitReachableFrom(device2, remoteCommit, localCommit); err != nil {
+		t.Fatal(err)
+	} else if reachable {
+		t.Fatalf("remote commit %s unexpectedly reachable before divergent pull", remoteCommit)
+	}
+
+	var divergentPullOutput bytes.Buffer
+	divergentPullErr := runCommandInDir(t, device2, &divergentPullOutput, func(cmd *cobra.Command) error {
+		return runPull(cmd, pullOptions{})
+	})
+	if divergentPullErr == nil {
+		t.Fatal("device 2 divergent pull succeeded")
+	}
+	if !strings.Contains(divergentPullErr.Error(), nonFastForwardPullMessage) {
+		t.Fatalf("device 2 divergent pull error = %q, want non-fast-forward refusal", divergentPullErr.Error())
+	}
+	assertRestoredHead(t, device2, localCommit)
+	if present, err := commitExists(device2, remoteCommit); err != nil {
+		t.Fatal(err)
+	} else if !present {
+		t.Fatalf("device 2 did not safely import remote commit %s", remoteCommit)
+	}
+
+	testGit(t, device2, "rebase", "--onto", remoteCommit, base, localCommit)
+	rebasedCommit := strings.TrimSpace(testGitOutput(t, device2, "rev-parse", "HEAD"))
+	if rebasedCommit == localCommit {
+		t.Fatal("manual rebase did not rewrite the original local commit")
+	}
+	if reachable, err := commitReachableFrom(device2, remoteCommit, rebasedCommit); err != nil {
+		t.Fatal(err)
+	} else if !reachable {
+		t.Fatalf("remote commit %s is not reachable from rebased HEAD %s", remoteCommit, rebasedCommit)
+	}
+	if reachable, err := commitReachableFrom(device2, localCommit, rebasedCommit); err != nil {
+		t.Fatal(err)
+	} else if reachable {
+		t.Fatalf("old local commit %s unexpectedly reachable from rebased HEAD %s", localCommit, rebasedCommit)
+	}
+
+	var statusOutput bytes.Buffer
+	if err := runCommandInDir(t, device2, &statusOutput, func(cmd *cobra.Command) error {
+		return runStatus(cmd, statusOptions{})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(statusOutput.String(), "Commits ahead: 1") {
+		t.Fatalf("status output = %q, want one commit ahead", statusOutput.String())
+	}
+
+	upload.calls = 0
+	upload.fields = nil
+	upload.payload = nil
+	var syncOutput bytes.Buffer
+	if err := runCommandInDir(t, device2, &syncOutput, func(cmd *cobra.Command) error {
+		return runSync(context.Background(), cmd, syncOptions{}, "")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(syncOutput.String(), "Synced 1 commit(s).") {
+		t.Fatalf("sync output = %q, want one rebased commit synced", syncOutput.String())
+	}
+	if upload.calls != 1 {
+		t.Fatalf("relay upload calls = %d, want 1", upload.calls)
+	}
+	if upload.fields["commitCount"] != "1" {
+		t.Fatalf("upload commitCount = %q, want 1", upload.fields["commitCount"])
+	}
+	rebasedBundle := uploadedBundlePayload(t, upload)
+	if got := len(rebasedBundle.Manifest.Commits); got != 1 {
+		t.Fatalf("uploaded bundle commits = %d, want 1", got)
+	}
+	if rebasedBundle.Manifest.Commits[0].SHA != rebasedCommit {
+		t.Fatalf("uploaded bundle commit = %s, want %s", rebasedBundle.Manifest.Commits[0].SHA, rebasedCommit)
+	}
+	if rebasedBundle.Manifest.HeadSHA != rebasedCommit {
+		t.Fatalf("uploaded bundle head = %s, want %s", rebasedBundle.Manifest.HeadSHA, rebasedCommit)
+	}
+	ledger, err := workspace.ReadLedger(device2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ledger.SyncedHead != rebasedCommit {
+		t.Fatalf("device 2 ledger synced head = %s, want %s", ledger.SyncedHead, rebasedCommit)
+	}
+
+	relay.addBundle(repo.RelayEntryID, "bundle-rebased", "device-2", rebasedBundle, time.Unix(40, 0))
+	var pullOutput bytes.Buffer
+	if err := runCommandInDir(t, device1, &pullOutput, func(cmd *cobra.Command) error {
+		return runPull(cmd, pullOptions{})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(pullOutput.String(), "Pulled 1 commit(s), fast-forwarded branch.") {
+		t.Fatalf("device 1 pull output = %q, want fast-forward", pullOutput.String())
+	}
+	assertRestoredHead(t, device1, rebasedCommit)
+	assertFileContent(t, device1, "remote.txt", "remote\n")
+	assertFileContent(t, device1, "local.txt", "local\n")
+	assertCleanWorktree(t, device1)
+	assertCleanWorktree(t, device2)
+	assertGitfuseNotTrackedOrStaged(t, device1)
+	assertGitfuseNotTrackedOrStaged(t, device2)
+}
+
 func TestSyncPhase17PullThenNoopSyncOnBothDevices(t *testing.T) {
 	t.Setenv("GITFUSE_RELAY_URL", "http://phase17.test")
 	t.Setenv("GITFUSE_TEST_TOKEN", "pull-token")
