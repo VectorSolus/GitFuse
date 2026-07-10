@@ -232,6 +232,129 @@ func TestPullDirtyRefusalThenExistingRemoteObjectStillFastForwards(t *testing.T)
 	}
 }
 
+func TestPullRefusesUntrackedFileBeforeDownloadAndSucceedsAfterCleanup(t *testing.T) {
+	t.Setenv("GITFUSE_RELAY_URL", "http://pull.test")
+	t.Setenv("GITFUSE_TEST_TOKEN", "pull-token")
+	t.Setenv("GITFUSE_HOME", t.TempDir())
+
+	fixture := newPendingPullFixture(t, "repo-phase25-untracked")
+	ledgerBefore := readFile(t, filepath.Join(fixture.device2, ".gitfuse", "ledger"))
+	headBefore := strings.TrimSpace(testGitOutput(t, fixture.device2, "rev-parse", "HEAD"))
+	dirtyPath := filepath.Join(fixture.device2, "dirty-device2-phase25.txt")
+	if err := os.WriteFile(dirtyPath, []byte("device 2 scratch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var dirtyOutput bytes.Buffer
+	dirtyErr := runCommandInDir(t, fixture.device2, &dirtyOutput, func(cmd *cobra.Command) error {
+		return runPull(cmd, pullOptions{})
+	})
+	if dirtyErr == nil {
+		t.Fatal("untracked dirty pull succeeded")
+	}
+	if !strings.Contains(dirtyErr.Error(), "untracked files") {
+		t.Fatalf("dirty pull error = %q, want untracked refusal", dirtyErr.Error())
+	}
+	if strings.Contains(dirtyOutput.String(), "No new commits to pull.") || strings.Contains(dirtyOutput.String(), "Pulled") {
+		t.Fatalf("dirty pull printed success/no-op output: %q", dirtyOutput.String())
+	}
+	if got := totalDownloadCalls(fixture.relay); got != 0 {
+		t.Fatalf("dirty pull downloaded %d bundle payload(s), want 0", got)
+	}
+	assertRestoredHead(t, fixture.device2, headBefore)
+	if headBefore != fixture.baseHead {
+		t.Fatalf("HEAD before dirty pull = %s, want base %s", headBefore, fixture.baseHead)
+	}
+	if ledgerAfter := readFile(t, filepath.Join(fixture.device2, ".gitfuse", "ledger")); ledgerAfter != ledgerBefore {
+		t.Fatalf("dirty pull changed ledger\nbefore:\n%s\nafter:\n%s", ledgerBefore, ledgerAfter)
+	}
+	if present, err := commitExists(fixture.device2, fixture.remoteHead); err != nil {
+		t.Fatal(err)
+	} else if present {
+		t.Fatalf("dirty pull imported remote commit object %s", fixture.remoteHead)
+	}
+	if _, err := os.Stat(filepath.Join(fixture.device2, fixture.remoteFile)); !os.IsNotExist(err) {
+		t.Fatalf("dirty pull created %s, stat err = %v", fixture.remoteFile, err)
+	}
+
+	if err := os.Remove(dirtyPath); err != nil {
+		t.Fatal(err)
+	}
+	var cleanOutput bytes.Buffer
+	if err := runCommandInDir(t, fixture.device2, &cleanOutput, func(cmd *cobra.Command) error {
+		return runPull(cmd, pullOptions{})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(cleanOutput.String(), "Pulled 1 commit(s), fast-forwarded branch.") {
+		t.Fatalf("clean pull output = %q, want fast-forward", cleanOutput.String())
+	}
+	if fixture.relay.downloadCalls[fixture.remoteBundleID] != 1 {
+		t.Fatalf("remote bundle downloads = %d, want 1", fixture.relay.downloadCalls[fixture.remoteBundleID])
+	}
+	assertRestoredHead(t, fixture.device2, fixture.remoteHead)
+	assertFileContent(t, fixture.device2, fixture.remoteFile, "remote phase 25\n")
+	ledger, err := workspace.ReadLedger(fixture.device2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ledger.SyncedHead != fixture.remoteHead {
+		t.Fatalf("clean pull ledger synced head = %s, want %s", ledger.SyncedHead, fixture.remoteHead)
+	}
+	if ledger.PreviousSyncedHead != fixture.baseHead {
+		t.Fatalf("clean pull ledger previous synced head = %s, want %s", ledger.PreviousSyncedHead, fixture.baseHead)
+	}
+	assertCleanWorktree(t, fixture.device2)
+	assertGitfuseNotTrackedOrStaged(t, fixture.device2)
+}
+
+func TestPullAllowsIgnoredUntrackedFiles(t *testing.T) {
+	t.Setenv("GITFUSE_RELAY_URL", "http://pull.test")
+	t.Setenv("GITFUSE_TEST_TOKEN", "pull-token")
+	t.Setenv("GITFUSE_HOME", t.TempDir())
+
+	fixture := newPendingPullFixture(t, "repo-phase25-ignored")
+	excludePath := filepath.Join(fixture.device2, ".git", "info", "exclude")
+	excludeFile, err := os.OpenFile(excludePath, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := excludeFile.WriteString("\nignored-device2-phase25.txt\n"); err != nil {
+		_ = excludeFile.Close()
+		t.Fatal(err)
+	}
+	if err := excludeFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ignoredPath := filepath.Join(fixture.device2, "ignored-device2-phase25.txt")
+	if err := os.WriteFile(ignoredPath, []byte("ignored scratch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if status := strings.TrimSpace(testGitOutput(t, fixture.device2, "status", "--porcelain")); status != "" {
+		t.Fatalf("git status = %q, want ignored file hidden", status)
+	}
+
+	var output bytes.Buffer
+	if err := runCommandInDir(t, fixture.device2, &output, func(cmd *cobra.Command) error {
+		return runPull(cmd, pullOptions{})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "Pulled 1 commit(s), fast-forwarded branch.") {
+		t.Fatalf("pull output = %q, want fast-forward", output.String())
+	}
+	if fixture.relay.downloadCalls[fixture.remoteBundleID] != 1 {
+		t.Fatalf("remote bundle downloads = %d, want 1", fixture.relay.downloadCalls[fixture.remoteBundleID])
+	}
+	assertRestoredHead(t, fixture.device2, fixture.remoteHead)
+	assertFileContent(t, fixture.device2, fixture.remoteFile, "remote phase 25\n")
+	if _, err := os.Stat(ignoredPath); err != nil {
+		t.Fatalf("ignored file missing after pull: %v", err)
+	}
+	assertCleanWorktree(t, fixture.device2)
+	assertGitfuseNotTrackedOrStaged(t, fixture.device2)
+}
+
 func TestPullNonFastForwardDoesNotAdvanceLedgerBeyondReachableHead(t *testing.T) {
 	t.Setenv("GITFUSE_RELAY_URL", "http://pull.test")
 	t.Setenv("GITFUSE_TEST_TOKEN", "pull-token")
@@ -765,6 +888,65 @@ func TestPullSkipsUnavailableLegacyRowsAndFastForwardsNewMetadataBundle(t *testi
 	}
 	assertCleanWorktree(t, device2)
 	assertGitfuseNotTrackedOrStaged(t, device2)
+}
+
+type pendingPullFixture struct {
+	device2        string
+	relay          *pullRelayFixture
+	baseHead       string
+	remoteHead     string
+	remoteFile     string
+	remoteBundleID string
+}
+
+func newPendingPullFixture(t *testing.T, repoName string) pendingPullFixture {
+	t.Helper()
+
+	device1 := newPullGitRepo(t, "device1", "main")
+	initial := commitPullFile(t, device1, "README.md", "initial\n", "initial commit", time.Unix(1, 0))
+	initialBundle := mustCreatePullBundle(t, device1, "")
+
+	device2 := filepath.Join(t.TempDir(), "device2")
+	testGit(t, "", "clone", device1, device2)
+	testGit(t, device2, "config", "user.name", "gitfuse")
+	testGit(t, device2, "config", "user.email", "test@gitfuse.dev")
+	if err := excludeGitfuseMetadata(device2); err != nil {
+		t.Fatal(err)
+	}
+
+	remoteFile := "remote-device1-phase25.txt"
+	remoteHead := commitPullFile(t, device1, remoteFile, "remote phase 25\n", "device 1 phase 25 commit", time.Unix(2, 0))
+	remoteBundle := mustCreatePullBundle(t, device1, initial)
+	relay := newPullRelayFixture(relayRepository{
+		ID:           repoName + "-id",
+		UserID:       "user-id",
+		RootSHA:      initial,
+		DisplayName:  repoName,
+		RemoteURL:    "",
+		RelayEntryID: repoName + "-relay",
+	})
+	remoteBundleID := "bundle-device1-phase25"
+	relay.addBundle(relay.repo.RelayEntryID, "bundle-initial", "device-1", initialBundle, time.Unix(10, 0))
+	relay.addBundle(relay.repo.RelayEntryID, remoteBundleID, "device-1", remoteBundle, time.Unix(20, 0))
+	installPullRelayTransport(t, relay)
+	writePullMetadata(t, device2, relay.repo, initial, "")
+
+	return pendingPullFixture{
+		device2:        device2,
+		relay:          relay,
+		baseHead:       initial,
+		remoteHead:     remoteHead,
+		remoteFile:     remoteFile,
+		remoteBundleID: remoteBundleID,
+	}
+}
+
+func totalDownloadCalls(fixture *pullRelayFixture) int {
+	total := 0
+	for _, calls := range fixture.downloadCalls {
+		total += calls
+	}
+	return total
 }
 
 type pullRelayFixture struct {

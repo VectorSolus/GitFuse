@@ -68,6 +68,9 @@ func runPull(cmd *cobra.Command, opts pullOptions) error {
 	if err != nil {
 		return fmt.Errorf("read .gitfuse/ledger: %w", err)
 	}
+	if err := ensureCleanWorktree(repoPath); err != nil {
+		return err
+	}
 	ledger, _, err = repairLedgerSyncedHeadIfNeeded(repoPath, ledger)
 	if err != nil {
 		return err
@@ -187,7 +190,7 @@ func pullRelayBundles(ctx context.Context, repoPath string, localCfg config.Loca
 		ledger = repaired
 	}
 	if allowFastForward {
-		if err := ensureCleanTrackedWorktree(repoPath); err != nil {
+		if err := ensureCleanWorktree(repoPath); err != nil {
 			return pullResult{}, err
 		}
 	}
@@ -508,30 +511,23 @@ func isAncestor(repoPath, ancestor, descendant string) (bool, error) {
 	return false, err
 }
 
-func ensureCleanTrackedWorktree(repoPath string) error {
-	if err := runGit(repoPath, "diff", "--quiet", "HEAD", "--"); err != nil {
-		return fmt.Errorf("working tree has local changes; commit or stash them before pulling")
+func ensureCleanWorktree(repoPath string) error {
+	clean, err := worktreeClean(repoPath)
+	if err != nil {
+		return err
 	}
-	if err := runGit(repoPath, "diff", "--cached", "--quiet", "HEAD", "--"); err != nil {
-		return fmt.Errorf("index has staged changes; commit or unstage them before pulling")
+	if !clean {
+		return fmt.Errorf("working tree has local changes or untracked files; commit, stash, or remove them before pulling")
 	}
 	return nil
 }
 
-func trackedWorktreeClean(repoPath string) (bool, error) {
-	if err := runGit(repoPath, "diff", "--quiet", "HEAD", "--"); err != nil {
-		if strings.Contains(err.Error(), "exit status 1") {
-			return false, nil
-		}
+func worktreeClean(repoPath string) (bool, error) {
+	status, err := gitOutput(repoPath, "status", "--porcelain=v1", "--untracked-files=normal")
+	if err != nil {
 		return false, err
 	}
-	if err := runGit(repoPath, "diff", "--cached", "--quiet", "HEAD", "--"); err != nil {
-		if strings.Contains(err.Error(), "exit status 1") {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
+	return strings.TrimSpace(status) == "", nil
 }
 
 func updatePullLedger(repoPath string, ledger workspace.Ledger, syncedHead string) error {
@@ -608,7 +604,7 @@ func repairLedgerToLocalHeadForLegacyRelayRowsIfSafe(repoPath string, ledger wor
 	if err != nil || !ledgerReachable {
 		return ledger, false, err
 	}
-	clean, err := trackedWorktreeClean(repoPath)
+	clean, err := worktreeClean(repoPath)
 	if err != nil || !clean {
 		return ledger, false, err
 	}
