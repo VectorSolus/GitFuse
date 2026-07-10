@@ -130,6 +130,22 @@ func CreateIncrementalBundle(path, syncedHead string) (BundlePayload, error) {
 	return BundlePayload{Manifest: manifest, Bytes: bytes, SHA256: SHA256(bytes), Submodules: submodules}, nil
 }
 
+func CommitCountAfter(path, syncedHead string) (int, error) {
+	repo, err := OpenRepository(path)
+	if err != nil {
+		return 0, err
+	}
+	head, err := repo.Head()
+	if err != nil {
+		return 0, fmt.Errorf("read HEAD: %w", err)
+	}
+	commits, err := commitsAfter(repo, head.Hash(), syncedHead)
+	if err != nil {
+		return 0, err
+	}
+	return len(commits), nil
+}
+
 func createNativeGitBundle(repoPath, headRef, headSHA, syncedHead string) ([]byte, error) {
 	tmpDir, err := os.MkdirTemp("", "gitfuse-native-bundle-*")
 	if err != nil {

@@ -68,6 +68,14 @@ func relayBaseURLOrError() (string, error) {
 	return resolved.URL, nil
 }
 
+func relayBaseURL() string {
+	url, err := relayBaseURLOrError()
+	if err != nil {
+		return ""
+	}
+	return url
+}
+
 func normalizeRelayURL(raw string) (string, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {

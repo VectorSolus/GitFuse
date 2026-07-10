@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -71,6 +72,31 @@ func collectRepoStatus(repoPath string) (repoStatus, error) {
 	ledger, err := workspace.ReadLedger(repoPath)
 	if err != nil {
 		return repoStatus{}, fmt.Errorf("read .gitfuse/ledger: %w", err)
+	}
+	ledger, _, err = repairLedgerSyncedHeadIfNeeded(repoPath, ledger)
+	if err != nil {
+		return repoStatus{}, err
+	}
+	if relayCandidates, err := activeRelayHeadCandidates(context.Background(), localCfg); err == nil && len(relayCandidates) > 0 {
+		head, err := currentHead(repoPath)
+		if err != nil {
+			return repoStatus{}, err
+		}
+		blockers, err := blockingRelayHeadCandidates(repoPath, head, relayCandidates, localDeviceID())
+		if err != nil {
+			return repoStatus{}, err
+		}
+		ledger, _, err = repairLedgerForBlockingRelayHeadsIfNeeded(repoPath, ledger, head, blockers)
+		if err != nil {
+			return repoStatus{}, err
+		}
+		if len(blockers) == 0 {
+			if syncedHead, err := effectiveRelaySyncBase(repoPath, ledger, head, relayCandidates); err != nil {
+				return repoStatus{}, err
+			} else {
+				ledger.SyncedHead = syncedHead
+			}
+		}
 	}
 	ahead, err := commitsAhead(repoPath, ledger.SyncedHead)
 	if err != nil {

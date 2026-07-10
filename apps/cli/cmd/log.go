@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -49,6 +50,31 @@ func runLog(cmd *cobra.Command) error {
 	ledger, err := workspace.ReadLedger(repoPath)
 	if err != nil {
 		return fmt.Errorf("read .gitfuse/ledger: %w", err)
+	}
+	ledger, _, err = repairLedgerSyncedHeadIfNeeded(repoPath, ledger)
+	if err != nil {
+		return err
+	}
+	if relayCandidates, err := activeRelayHeadCandidates(context.Background(), localCfg); err == nil && len(relayCandidates) > 0 {
+		head, err := currentHead(repoPath)
+		if err != nil {
+			return err
+		}
+		blockers, err := blockingRelayHeadCandidates(repoPath, head, relayCandidates, localDeviceID())
+		if err != nil {
+			return err
+		}
+		ledger, _, err = repairLedgerForBlockingRelayHeadsIfNeeded(repoPath, ledger, head, blockers)
+		if err != nil {
+			return err
+		}
+		if len(blockers) == 0 {
+			if syncedHead, err := effectiveRelaySyncBase(repoPath, ledger, head, relayCandidates); err != nil {
+				return err
+			} else {
+				ledger.SyncedHead = syncedHead
+			}
+		}
 	}
 	commits, err := collectLogCommits(repoPath, ledger)
 	if err != nil {

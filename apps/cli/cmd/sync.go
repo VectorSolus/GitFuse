@@ -68,6 +68,29 @@ func runSync(ctx context.Context, cmd *cobra.Command, opts syncOptions, commitRa
 	if err != nil {
 		return fmt.Errorf("read .gitfuse/ledger: %w", err)
 	}
+	head, err := currentHead(repoPath)
+	if err != nil {
+		return err
+	}
+	ledger, _, err = repairLedgerSyncedHeadIfNeeded(repoPath, ledger)
+	if err != nil {
+		return err
+	}
+	relayCandidates, err := activeRelayHeadCandidates(ctx, localCfg)
+	if err != nil {
+		return fmt.Errorf("validate relay head before sync: %w", err)
+	}
+	blockers, err := blockingRelayHeadCandidates(repoPath, head, relayCandidates, localDeviceID())
+	if err != nil {
+		return err
+	}
+	ledger, _, err = repairLedgerForBlockingRelayHeadsIfNeeded(repoPath, ledger, head, blockers)
+	if err != nil {
+		return err
+	}
+	if len(blockers) > 0 {
+		return fmt.Errorf("remote has new commits not included in local HEAD. Pull/rebase before syncing.")
+	}
 	if ledger.Paused {
 		fmt.Fprintln(cmd.OutOrStdout(), "gitfuse is paused. Run 'gitfuse resume' to sync again.")
 		return nil
@@ -75,6 +98,19 @@ func runSync(ctx context.Context, cmd *cobra.Command, opts syncOptions, commitRa
 	syncedHead := ledger.SyncedHead
 	if opts.all {
 		syncedHead = ""
+	} else {
+		syncedHead, err = effectiveRelaySyncBase(repoPath, ledger, head, relayCandidates)
+		if err != nil {
+			return err
+		}
+	}
+	ahead, err := gfgit.CommitCountAfter(repoPath, syncedHead)
+	if err != nil {
+		return err
+	}
+	if ahead == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "No commits to sync.")
+		return nil
 	}
 	bundle, err := gfgit.CreateIncrementalBundle(repoPath, syncedHead)
 	if err != nil {
@@ -120,10 +156,6 @@ func runSync(ctx context.Context, cmd *cobra.Command, opts syncOptions, commitRa
 		return err
 	}
 
-	head, err := currentHead(repoPath)
-	if err != nil {
-		return err
-	}
 	if err := workspace.UpdateSyncedHead(repoPath, head); err != nil {
 		return err
 	}

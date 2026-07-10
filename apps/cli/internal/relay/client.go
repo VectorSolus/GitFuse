@@ -7,6 +7,8 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -35,6 +37,10 @@ func NewClient(baseURL, token string) *Client {
 }
 
 func (c *Client) UploadBundle(ctx context.Context, upload UploadRequest) (*http.Response, error) {
+	if err := ValidateUploadRequest(upload); err != nil {
+		return nil, err
+	}
+
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	for key, value := range map[string]string{
@@ -69,7 +75,31 @@ func (c *Client) UploadBundle(ctx context.Context, upload UploadRequest) (*http.
 	return c.HTTPClient.Do(req)
 }
 
+func ValidateUploadRequest(upload UploadRequest) error {
+	if strings.TrimSpace(upload.RelayEntryID) == "" {
+		return fmt.Errorf("invalid bundle upload: relayEntryId is required")
+	}
+	if strings.TrimSpace(upload.BundleHash) == "" {
+		return fmt.Errorf("invalid bundle upload: bundleHash is required")
+	}
+	commitCount, err := strconv.Atoi(strings.TrimSpace(upload.CommitCount))
+	if err != nil || commitCount <= 0 {
+		return fmt.Errorf("invalid bundle upload: commitCount must be greater than zero")
+	}
+	sizeBytes, err := strconv.Atoi(strings.TrimSpace(upload.SizeBytes))
+	if err != nil || sizeBytes <= 0 {
+		return fmt.Errorf("invalid bundle upload: sizeBytes must be greater than zero")
+	}
+	if len(upload.Payload) == 0 {
+		return fmt.Errorf("invalid bundle upload: bundle file is required")
+	}
+	return nil
+}
+
 func UploadOrQueue(ctx context.Context, client *Client, repoPath string, upload UploadRequest) (QueuedBundle, string, error) {
+	if err := ValidateUploadRequest(upload); err != nil {
+		return QueuedBundle{}, "", err
+	}
 	response, err := client.UploadBundle(ctx, upload)
 	if err != nil {
 		queued, queueErr := WriteQueueBundle(repoPath, upload.RelayEntryID, upload.Payload)
@@ -101,6 +131,9 @@ func RetryQueuedBundle(ctx context.Context, client *Client, path, expectedHash s
 		return err
 	}
 	upload.Payload = payload
+	if err := ValidateUploadRequest(upload); err != nil {
+		return err
+	}
 	response, err := client.UploadBundle(ctx, upload)
 	if err != nil {
 		return err
