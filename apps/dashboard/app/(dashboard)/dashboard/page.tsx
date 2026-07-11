@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 
+import { DashboardDataError } from "@/components/dashboard/data-error";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 
 const SoftAurora = dynamic(() => import("@/components/effects/SoftAurora"), {
@@ -10,7 +11,7 @@ const SoftAurora = dynamic(() => import("@/components/effects/SoftAurora"), {
 }) as ComponentType<any>;
 
 export default function DashboardOverviewPage() {
-  const { data } = useDashboardData();
+  const { data, error, loading } = useDashboardData();
   const usage = data?.usage;
   const billing = data?.billing;
   const activeDevices = data?.devices.filter((device) => device.status === "active") ?? [];
@@ -60,9 +61,13 @@ export default function DashboardOverviewPage() {
       value: latestDevice?.name ?? "Not linked",
       helper: latestDevice?.lastActiveAt
         ? `Last active ${formatDate(latestDevice.lastActiveAt)}.`
-        : "Run gitfuse auth from your machine.",
+        : "Run gitfuse auth login from your machine.",
     },
   ];
+
+  if (error && !loading) {
+    return <DashboardDataError message={error} />;
+  }
 
   return (
     <div className="gf-dash-overview-v2">
@@ -136,7 +141,7 @@ export default function DashboardOverviewPage() {
                 <span>brew install gitfuse</span>
                 <span />
                 <span className="gf-code-comment"># 2. Link this device to your workspace</span>
-                <span>gitfuse auth</span>
+                <span>gitfuse auth login</span>
                 <span />
                 <span className="gf-code-comment"># 3. Track the current repository</span>
                 <span>gitfuse add .</span>

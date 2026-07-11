@@ -22,7 +22,16 @@ var logCmd = &cobra.Command{
 	},
 }
 
+var historyCmd = &cobra.Command{
+	Use:   "history",
+	Short: "Show GitFuse sync history and commit states",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runHistory(cmd)
+	},
+}
+
 func init() {
+	rootCmd.AddCommand(historyCmd)
 	rootCmd.AddCommand(logCmd)
 }
 
@@ -110,6 +119,10 @@ func runLog(cmd *cobra.Command) error {
 		}
 	}
 	return nil
+}
+
+func runHistory(cmd *cobra.Command) error {
+	return runLog(cmd)
 }
 
 func collectLogCommits(repoPath string, ledger workspace.Ledger) ([]logCommit, error) {

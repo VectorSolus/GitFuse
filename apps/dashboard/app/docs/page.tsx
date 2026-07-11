@@ -153,8 +153,8 @@ const commandGroups = [
   {
     id: "auto-sync",
     eyebrow: "Auto sync",
-    title: "Prepare future automation.",
-    body: "Auto sync is planned for later releases. For now, the page keeps the frontend structure ready for backend wiring.",
+    title: "Control automatic sync.",
+    body: "Enable, disable, and inspect automatic sync for the active repository from the same command group.",
     commands: [
       {
         label: "Enable auto sync",

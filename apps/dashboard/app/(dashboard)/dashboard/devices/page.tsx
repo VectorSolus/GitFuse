@@ -19,7 +19,7 @@ const setupSteps = [
   },
   {
     title: "Authenticate this machine",
-    command: "gitfuse auth",
+    command: "gitfuse auth login",
   },
   {
     title: "Verify device trust",
@@ -272,8 +272,8 @@ export default function DevicesPage() {
 
               <h4>No devices linked yet</h4>
               <p>
-                Run <code>gitfuse auth</code> on a machine to create its trusted
-                device identity and connect it to this workspace.
+                Run <code>gitfuse auth login</code> on a machine to create its
+                trusted device identity and connect it to this workspace.
               </p>
 
               <div className="gf-devices-command-list">

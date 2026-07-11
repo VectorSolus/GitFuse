@@ -107,6 +107,17 @@ func CredentialsPath() (string, error) {
 	return globalPath("credentials")
 }
 
+func RemoveCredentials() error {
+	path, err := CredentialsPath()
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove credentials: %w", err)
+	}
+	return nil
+}
+
 func DeviceIDPath() (string, error) {
 	return globalPath("device_id")
 }
@@ -289,6 +300,37 @@ func UpsertRepositoryRegistryEntry(entry RegistryEntry) (RepositoryRegistry, err
 	return registry, nil
 }
 
+func RemoveRepositoryRegistryEntry(match func(RegistryEntry) bool) (RepositoryRegistry, []RegistryEntry, error) {
+	registry, err := ReadRepositoryRegistry()
+	if err != nil {
+		return RepositoryRegistry{}, nil, err
+	}
+	kept := make([]RegistryEntry, 0, len(registry.Entries))
+	removed := make([]RegistryEntry, 0, 1)
+	for _, entry := range registry.Entries {
+		if match(entry) {
+			removed = append(removed, entry)
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	registry.Entries = kept
+	if registry.ActiveRelayEntryID != "" {
+		for _, entry := range removed {
+			if entry.RelayEntryID == registry.ActiveRelayEntryID {
+				registry.ActiveRelayEntryID = ""
+				break
+			}
+		}
+	}
+	if len(removed) > 0 {
+		if _, err := WriteRepositoryRegistry(registry); err != nil {
+			return RepositoryRegistry{}, nil, err
+		}
+	}
+	return registry, removed, nil
+}
+
 type ActiveRepo struct {
 	Name string
 	Path string
@@ -376,6 +418,17 @@ func ReadActiveRepo() (ActiveRepo, error) {
 		Name: globalTomlString(text, "name"),
 		Path: globalTomlString(text, "path"),
 	}, nil
+}
+
+func RemoveActiveRepo() error {
+	path, err := ActiveRepoPath()
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove active repo: %w", err)
+	}
+	return nil
 }
 
 func globalTomlString(text, key string) string {

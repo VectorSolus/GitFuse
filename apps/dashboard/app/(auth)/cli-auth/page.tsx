@@ -157,7 +157,7 @@ function StatusMessage({ status }: { status: CliAuthSessionStatus }) {
       case "pending":
         return "Code found. Review the terminal code, then approve this device.";
       case "expired":
-        return "This code has expired. Run gitfuse auth again.";
+        return "This code has expired. Run gitfuse auth login again.";
       case "relay_unavailable":
         return "Relay service is offline. Try again.";
       case "missing_code":

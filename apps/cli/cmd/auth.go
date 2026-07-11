@@ -43,12 +43,30 @@ var authLoginCmd = &cobra.Command{
 	},
 }
 
+var authWhoamiCmd = &cobra.Command{
+	Use:   "whoami",
+	Short: "Print the current authenticated GitFuse identity",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runAuthWhoami(cmd)
+	},
+}
+
+var authLogoutCmd = &cobra.Command{
+	Use:   "logout",
+	Short: "Remove the local GitFuse session",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runAuthLogout(cmd)
+	},
+}
+
 func init() {
 	authCmd.PersistentFlags().BoolVar(&authOpts.headless, "headless", false, "print approval URL without opening a browser")
 	authCmd.PersistentFlags().BoolVar(&authOpts.oauth, "oauth", false, "authenticate with the browser OAuth flow")
 	authCmd.PersistentFlags().StringVar(&authOpts.code, "code", "", "fixed auth code for tests")
 	_ = authCmd.PersistentFlags().MarkHidden("code")
 	authCmd.AddCommand(authLoginCmd)
+	authCmd.AddCommand(authWhoamiCmd)
+	authCmd.AddCommand(authLogoutCmd)
 	rootCmd.AddCommand(authCmd)
 }
 
@@ -71,6 +89,47 @@ func runAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) error {
 	default:
 		return fmt.Errorf("enter Y or N")
 	}
+}
+
+func runAuthWhoami(cmd *cobra.Command) error {
+	credentials, err := config.ReadCredentials()
+	if err != nil || strings.TrimSpace(credentials.Token) == "" {
+		return fmt.Errorf(notAuthenticatedMessage)
+	}
+	username := credentials.Username
+	if strings.TrimSpace(username) == "" {
+		username = "unknown"
+	}
+	deviceID := credentials.DeviceID
+	if strings.TrimSpace(deviceID) == "" {
+		deviceID = "unknown"
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Account: %s\n", username)
+	fmt.Fprintf(cmd.OutOrStdout(), "Device ID: %s\n", deviceID)
+	if !credentials.RegisteredAt.IsZero() {
+		fmt.Fprintf(cmd.OutOrStdout(), "Authenticated at: %s\n", credentials.RegisteredAt.UTC().Format(time.RFC3339))
+	}
+	return nil
+}
+
+func runAuthLogout(cmd *cobra.Command) error {
+	credentials, err := config.ReadCredentials()
+	if err != nil || strings.TrimSpace(credentials.Token) == "" {
+		if removeErr := config.RemoveCredentials(); removeErr != nil {
+			return removeErr
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Already logged out. No local GitFuse session found.")
+		return nil
+	}
+	if err := config.RemoveCredentials(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(credentials.DeviceID) != "" {
+		fmt.Fprintf(cmd.OutOrStdout(), "Logged out locally from device %s. Relay trusted device was not revoked.\n", credentials.DeviceID)
+		return nil
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), "Logged out locally. Relay trusted device was not revoked.")
+	return nil
 }
 
 func runOAuthAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) error {

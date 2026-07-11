@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/gitfuse/gitfuse/apps/cli/internal/config"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func TestConfigDirDoesNotCreateDirectory(t *testing.T) {
@@ -73,6 +75,109 @@ func TestAuthLoginHelpWorks(t *testing.T) {
 	}
 }
 
+func TestPublicCommandContractHelpOutput(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "auth",
+			args: []string{"auth", "--help"},
+			want: []string{"login", "whoami", "logout"},
+		},
+		{
+			name: "auth whoami",
+			args: []string{"auth", "whoami", "--help"},
+			want: []string{"Print the current authenticated GitFuse identity", "gitfuse auth whoami"},
+		},
+		{
+			name: "auth logout",
+			args: []string{"auth", "logout", "--help"},
+			want: []string{"Remove the local GitFuse session", "gitfuse auth logout"},
+		},
+		{
+			name: "repo",
+			args: []string{"repo", "--help"},
+			want: []string{"list", "remove"},
+		},
+		{
+			name: "repo list",
+			args: []string{"repo", "list", "--help"},
+			want: []string{"List tracked GitFuse repositories", "gitfuse repo list"},
+		},
+		{
+			name: "repo remove",
+			args: []string{"repo", "remove", "--help"},
+			want: []string{"Remove a repository from local GitFuse tracking", "gitfuse repo remove <repo>"},
+		},
+		{
+			name: "history",
+			args: []string{"history", "--help"},
+			want: []string{"Show GitFuse sync history and commit states", "gitfuse history"},
+		},
+		{
+			name: "autosync",
+			args: []string{"autosync", "--help"},
+			want: []string{"enable", "disable", "status"},
+		},
+		{
+			name: "autosync enable",
+			args: []string{"autosync", "enable", "--help"},
+			want: []string{"Enable automatic GitFuse sync for this repository", "gitfuse autosync enable"},
+		},
+		{
+			name: "autosync disable",
+			args: []string{"autosync", "disable", "--help"},
+			want: []string{"Disable automatic GitFuse sync for this repository", "gitfuse autosync disable"},
+		},
+		{
+			name: "autosync status",
+			args: []string{"autosync", "status", "--help"},
+			want: []string{"Show automatic GitFuse sync status for this repository", "gitfuse autosync status"},
+		},
+		{
+			name: "legacy repos",
+			args: []string{"repos", "--help"},
+			want: []string{"Choose an active gitfuse repository", "gitfuse repos"},
+		},
+		{
+			name: "legacy log",
+			args: []string{"log", "--help"},
+			want: []string{"Show gitfuse relay-side sync history and commit states", "gitfuse log"},
+		},
+		{
+			name: "legacy start",
+			args: []string{"start", "--help"},
+			want: []string{"Start gitfuse automation for this repository", "gitfuse start"},
+		},
+		{
+			name: "legacy pause",
+			args: []string{"pause", "--help"},
+			want: []string{"Pause gitfuse sync for this repository", "gitfuse pause"},
+		},
+		{
+			name: "legacy resume",
+			args: []string{"resume", "--help"},
+			want: []string{"Resume gitfuse sync for this repository", "gitfuse resume"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			output, err := executeRootCommand(t, tc.args...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(output, want) {
+					t.Fatalf("%v help output missing %q:\n%s", tc.args, want, output)
+				}
+			}
+		})
+	}
+}
+
 func TestFailedAuthDoesNotWritePartialCredentials(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "relay unavailable", http.StatusBadGateway)
@@ -102,6 +207,8 @@ func TestPreAuthCommandAllowList(t *testing.T) {
 		{"doctor"},
 		{"auth"},
 		{"auth", "login"},
+		{"auth", "whoami"},
+		{"auth", "logout"},
 	} {
 		cmd, _, err := rootCmd.Find(args)
 		if err != nil {
@@ -214,6 +321,7 @@ func executeRootCommand(t *testing.T, args ...string) (string, error) {
 	var output bytes.Buffer
 	previousSilenceUsage := rootCmd.SilenceUsage
 	previousSilenceErrors := rootCmd.SilenceErrors
+	resetCommandFlags(rootCmd)
 	rootCmd.SetArgs(args)
 	rootCmd.SetOut(&output)
 	rootCmd.SetErr(&output)
@@ -227,10 +335,26 @@ func executeRootCommand(t *testing.T, args ...string) (string, error) {
 		rootCmd.SetIn(os.Stdin)
 		rootCmd.SilenceUsage = previousSilenceUsage
 		rootCmd.SilenceErrors = previousSilenceErrors
+		resetCommandFlags(rootCmd)
 	})
 
 	err := rootCmd.Execute()
 	return output.String(), err
+}
+
+func resetCommandFlags(cmd *cobra.Command) {
+	resetFlagSet(cmd.Flags())
+	resetFlagSet(cmd.PersistentFlags())
+	for _, child := range cmd.Commands() {
+		resetCommandFlags(child)
+	}
+}
+
+func resetFlagSet(flags *pflag.FlagSet) {
+	flags.VisitAll(func(flag *pflag.Flag) {
+		_ = flag.Value.Set(flag.DefValue)
+		flag.Changed = false
+	})
 }
 
 func withBuildMetadata(t *testing.T, testVersion, testCommit, testBuildDate, testDefaultRelayURL string) {

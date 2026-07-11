@@ -30,7 +30,7 @@ gitfuse closes that gap. It moves your local commits through a private encrypted
 brew install gitfuse
 
 # Register this device
-gitfuse auth
+gitfuse auth login
 
 # Add a project and sync
 cd my-project
@@ -55,7 +55,7 @@ gitfuse sync
 gitfuse sync HEAD~3..HEAD
 
 # Auto — sync silently after every git commit
-gitfuse start --auto
+gitfuse autosync enable
 ```
 
 ---
@@ -64,7 +64,9 @@ gitfuse start --auto
 
 ```zsh
 # Setup
-gitfuse auth                        # Register this device (browser or --headless)
+gitfuse auth login                  # Register this device (browser or --headless)
+gitfuse auth whoami                 # Show the authenticated account and device
+gitfuse auth logout                 # Remove the local session
 gitfuse add .                       # Add current repo to workspace
 gitfuse init "project" --public     # git init + create GitHub repo + link + sync
 
@@ -77,15 +79,18 @@ gitfuse pull                        # Replay relay commits onto this device
 gitfuse push                        # Send relay-curated history to GitHub remote
 
 # Control
-gitfuse pause                       # Suspend auto sync
-gitfuse pause --until "git commit"  # Auto-resume on next commit
-gitfuse resume --from 3             # Resume, sync last 3 commits only
+gitfuse autosync enable             # Enable post-commit auto sync
+gitfuse autosync disable            # Suspend auto sync
+gitfuse autosync status             # Show auto sync state
 gitfuse drop HEAD~1                 # Remove a commit from relay
 gitfuse undo                        # Roll back last sync event
 
 # Workspace
-gitfuse repos                       # Interactive repo browser
+gitfuse repo list                   # List tracked repositories
+gitfuse repo remove project-name    # Remove local GitFuse tracking
 gitfuse status --all                # Sync state across all repos
+gitfuse history                     # Show sync history and commit states
+gitfuse devices                     # List trusted devices
 gitfuse connect                     # Set up all repos on a new device
 gitfuse restore project-name        # Restore project from relay to this device
 gitfuse claim                       # Recover relay entry when .git was lost
