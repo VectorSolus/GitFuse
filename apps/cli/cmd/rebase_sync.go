@@ -30,11 +30,17 @@ func init() {
 }
 
 func runRebaseSync(ctx context.Context, cmd *cobra.Command) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	repoPath, err := os.Getwd()
 	if err != nil {
 		return err
 	}
 	if err := gfgit.PreflightCheck(repoPath); err != nil {
+		return err
+	}
+	if err := ensureCleanWorktree(repoPath); err != nil {
 		return err
 	}
 	localCfg, err := config.ReadLocalConfig(repoPath)
@@ -55,14 +61,170 @@ func runRebaseSync(ctx context.Context, cmd *cobra.Command) error {
 	if ledger.SyncedHead == "" {
 		return fmt.Errorf("no previous synced head recorded; run 'gitfuse sync' first")
 	}
+	head, err := currentHead(repoPath)
+	if err != nil {
+		return err
+	}
+	relayHead := ""
+	hasRelayHead := false
+	if canHydrateRelayHeadForRebaseSync(localCfg) {
+		relayHead, hasRelayHead, err = hydrateRelayHeadForRebaseSync(ctx, repoPath, localCfg, ledger, head)
+		if err != nil {
+			return fmt.Errorf("hydrate relay head before rebase-sync: %w", err)
+		}
+	}
 	contains, err := historyContains(repoPath, ledger.SyncedHead)
 	if err != nil {
 		return err
 	}
+	if !contains {
+		return uploadSupersedingHistory(ctx, cmd, repoPath, localCfg, ledger.SyncedHead)
+	}
+	if hasRelayHead {
+		return rebaseAndSyncAgainstRelayHead(ctx, cmd, repoPath, localCfg, head, relayHead)
+	}
+
 	if contains {
 		fmt.Fprintln(cmd.OutOrStdout(), "No rewritten history detected.")
 		return nil
 	}
+	return nil
+}
+
+func canHydrateRelayHeadForRebaseSync(localCfg config.LocalConfig) bool {
+	if strings.TrimSpace(localCfg.RelayEntryID) == "" || strings.TrimSpace(deviceToken()) == "" {
+		return false
+	}
+	_, err := relayBaseURLOrError()
+	return err == nil
+}
+
+func hydrateRelayHeadForRebaseSync(ctx context.Context, repoPath string, localCfg config.LocalConfig, ledger workspace.Ledger, localHead string) (string, bool, error) {
+	rows, err := activeRelayBundleRows(ctx, localCfg)
+	if err != nil {
+		return "", false, err
+	}
+	if len(rows) == 0 {
+		return "", false, nil
+	}
+
+	repo := relayRepository{
+		RootSHA:      localCfg.RootSHA,
+		DisplayName:  localCfg.DisplayName,
+		RelayEntryID: localCfg.RelayEntryID,
+	}
+	downloadRows := make([]relayBundleRow, 0, len(rows))
+	for _, row := range rows {
+		head := relayHeadFromBundleRow(row)
+		if head == "" {
+			continue
+		}
+		reachable, err := commitReachableFrom(repoPath, head, localHead)
+		if err != nil {
+			return "", false, err
+		}
+		if !reachable {
+			downloadRows = append(downloadRows, row)
+		}
+	}
+
+	if len(downloadRows) > 0 {
+		bundles := make([]downloadedRestoreBundle, 0, len(downloadRows))
+		for _, row := range downloadRows {
+			bundle, err := downloadRestoreBundle(ctx, repo, row)
+			if err != nil {
+				return "", false, err
+			}
+			bundles = append(bundles, bundle)
+		}
+		if _, _, err := importMissingPullBundles(repoPath, bundles, ledger); err != nil {
+			return "", false, err
+		}
+	}
+
+	candidates := relayHeadCandidatesFromRows(rows)
+	for i := len(candidates) - 1; i >= 0; i-- {
+		reachable, err := commitReachableFrom(repoPath, candidates[i].Head, localHead)
+		if err != nil {
+			return "", false, err
+		}
+		if reachable {
+			continue
+		}
+		if ok, err := commitExists(repoPath, candidates[i].Head); err != nil {
+			return "", false, err
+		} else if !ok {
+			return "", false, fmt.Errorf("relay head %s was not imported", candidates[i].Head)
+		}
+		return candidates[i].Head, true, nil
+	}
+	if len(candidates) == 0 {
+		return "", false, nil
+	}
+	return candidates[len(candidates)-1].Head, true, nil
+}
+
+func rebaseAndSyncAgainstRelayHead(ctx context.Context, cmd *cobra.Command, repoPath string, localCfg config.LocalConfig, localHead, relayHead string) error {
+	if relayHead == "" || relayHead == localHead {
+		fmt.Fprintln(cmd.OutOrStdout(), "No rewritten history detected.")
+		return nil
+	}
+	relayContainsLocal, err := commitReachableFrom(repoPath, localHead, relayHead)
+	if err != nil {
+		return err
+	}
+	if relayContainsLocal {
+		fmt.Fprintln(cmd.OutOrStdout(), "No rewritten history detected.")
+		return nil
+	}
+	localContainsRelay, err := commitReachableFrom(repoPath, relayHead, localHead)
+	if err != nil {
+		return err
+	}
+	if localContainsRelay {
+		return syncRebaseSyncCommits(ctx, cmd, repoPath, localCfg.RelayEntryID, relayHead)
+	}
+
+	mergeBase, err := mergeBase(repoPath, relayHead, localHead)
+	if err != nil {
+		return err
+	}
+	localCommits, err := commitCountBetween(repoPath, mergeBase, localHead)
+	if err != nil {
+		return err
+	}
+	if localCommits == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "No rewritten history detected.")
+		return nil
+	}
+	if err := runGit(repoPath, "rebase", "--onto", relayHead, mergeBase); err != nil {
+		_ = runGit(repoPath, "rebase", "--abort")
+		return fmt.Errorf("rebase local commits onto relay head: %w", err)
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Rebased %d commit(s) onto relay head.\n", localCommits)
+	return syncRebaseSyncCommits(ctx, cmd, repoPath, localCfg.RelayEntryID, relayHead)
+}
+
+func syncRebaseSyncCommits(ctx context.Context, cmd *cobra.Command, repoPath, relayEntryID, syncedHead string) error {
+	bundle, err := gfgit.CreateIncrementalBundle(repoPath, syncedHead)
+	if err != nil {
+		return err
+	}
+	if len(bundle.Manifest.Commits) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "No rewritten history detected.")
+		return nil
+	}
+	if err := uploadOrStoreRebaseSyncBundle(ctx, repoPath, relayEntryID, bundle); err != nil {
+		return err
+	}
+	if err := workspace.UpdateSyncedHead(repoPath, bundle.Manifest.HeadSHA); err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Synced %d commit(s).\n", len(bundle.Manifest.Commits))
+	return nil
+}
+
+func uploadSupersedingHistory(ctx context.Context, cmd *cobra.Command, repoPath string, localCfg config.LocalConfig, previousHead string) error {
 	bundle, err := gfgit.CreateIncrementalBundle(repoPath, "")
 	if err != nil {
 		return err
@@ -71,16 +233,16 @@ func runRebaseSync(ctx context.Context, cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	if err := writeRewriteMarker(repoPath, ledger.SyncedHead, head); err != nil {
+	if err := writeRewriteMarker(repoPath, previousHead, head); err != nil {
 		return err
 	}
-	if err := uploadOrStoreSupersedingBundle(ctx, repoPath, localCfg.RelayEntryID, bundle); err != nil {
+	if err := uploadOrStoreRebaseSyncBundle(ctx, repoPath, localCfg.RelayEntryID, bundle); err != nil {
 		return err
 	}
 	if err := workspace.UpdateSyncedHead(repoPath, head); err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "History rewrite detected. Uploaded superseding bundle from %s to %s.\n", ledger.SyncedHead, head)
+	fmt.Fprintf(cmd.OutOrStdout(), "History rewrite detected. Uploaded superseding bundle from %s to %s.\n", previousHead, head)
 	return nil
 }
 
@@ -118,10 +280,22 @@ func writeRewriteMarker(repoPath, from, to string) error {
 	return err
 }
 
-func uploadOrStoreSupersedingBundle(ctx context.Context, repoPath, relayEntryID string, bundle gfgit.BundlePayload) error {
-	relayURL := os.Getenv("GITFUSE_RELAY_URL")
-	token := os.Getenv("GITFUSE_TEST_TOKEN")
-	if relayURL == "" || token == "" {
+func mergeBase(repoPath, left, right string) (string, error) {
+	out, err := gitOutput(repoPath, "merge-base", left, right)
+	if err != nil {
+		return "", err
+	}
+	base := strings.TrimSpace(out)
+	if base == "" {
+		return "", fmt.Errorf("no merge base found between relay head %s and local head %s", left, right)
+	}
+	return base, nil
+}
+
+func uploadOrStoreRebaseSyncBundle(ctx context.Context, repoPath, relayEntryID string, bundle gfgit.BundlePayload) error {
+	relayURL, urlErr := relayBaseURLOrError()
+	token := deviceToken()
+	if urlErr != nil || token == "" {
 		_, err := config.WriteLocalFile(filepath.Join(config.GitfuseDir(repoPath), "rebase-sync.bundle"), bundle.Bytes, 0o600)
 		return err
 	}
@@ -132,6 +306,7 @@ func uploadOrStoreSupersedingBundle(ctx context.Context, repoPath, relayEntryID 
 		CommitCount:  strconv.Itoa(len(bundle.Manifest.Commits)),
 		SizeBytes:    strconv.Itoa(len(bundle.Bytes)),
 		Payload:      bundle.Bytes,
+		Commits:      relayCommitsFromBundle(bundle.Manifest.Commits),
 	})
 	if queued.Path != "" {
 		return nil
