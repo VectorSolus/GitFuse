@@ -69,6 +69,9 @@ func runClaim(cmd *cobra.Command) error {
 	} else {
 		fmt.Fprintf(cmd.OutOrStdout(), "Fingerprint match %.0f%% accepted.\n", score)
 	}
+	if err := protectGitfuseMetadata(repoPath); err != nil {
+		return err
+	}
 	if _, err := config.WriteLocalConfig(repoPath, config.LocalConfig{
 		RootSHA:      relayRepo.RootSHA,
 		RelayEntryID: relayRepo.RelayEntryID,
@@ -79,6 +82,9 @@ func runClaim(cmd *cobra.Command) error {
 		return err
 	}
 	if _, err := workspace.WriteLedger(repoPath, workspace.Ledger{}); err != nil {
+		return err
+	}
+	if err := unstageGitfuseMetadata(repoPath); err != nil {
 		return err
 	}
 	if err := createRestoreBranch(repoPath); err != nil {

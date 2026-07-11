@@ -546,23 +546,7 @@ func validateGitfuseUntracked(target string) error {
 }
 
 func excludeGitfuseMetadata(target string) error {
-	excludePath := filepath.Join(target, ".git", "info", "exclude")
-	existing, _ := os.ReadFile(excludePath)
-	if strings.Contains(string(existing), ".gitfuse/") {
-		return nil
-	}
-	file, err := os.OpenFile(excludePath, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
-		if _, err := file.WriteString("\n"); err != nil {
-			return err
-		}
-	}
-	_, err = file.WriteString(".gitfuse/\n")
-	return err
+	return ensureGitfuseMetadataIgnored(target)
 }
 
 type globalConfigSnapshot struct {

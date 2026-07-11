@@ -14,7 +14,6 @@ import (
 	"github.com/gitfuse/gitfuse/apps/cli/internal/config"
 	gfgit "github.com/gitfuse/gitfuse/apps/cli/internal/git"
 	"github.com/gitfuse/gitfuse/apps/cli/internal/workspace"
-	gogit "github.com/go-git/go-git/v5"
 	"github.com/spf13/cobra"
 )
 
@@ -44,6 +43,9 @@ func runAdd(ctx context.Context, cmd *cobra.Command) error {
 		return err
 	}
 	if err := gfgit.PreflightCheck(repoPath); err != nil {
+		return err
+	}
+	if err := protectGitfuseMetadata(repoPath); err != nil {
 		return err
 	}
 	rootSHA, err := gfgit.RootSHA(repoPath)
@@ -76,10 +78,7 @@ func runAdd(ctx context.Context, cmd *cobra.Command) error {
 	if _, err := workspace.WriteLedger(repoPath, workspace.Ledger{}); err != nil {
 		return err
 	}
-	if err := ensureGitignore(repoPath); err != nil {
-		return err
-	}
-	if err := stageGitfuseFiles(repoPath); err != nil {
+	if err := unstageGitfuseMetadata(repoPath); err != nil {
 		return err
 	}
 	if _, err := config.UpsertRepositoryRegistryEntry(config.RegistryEntry{
@@ -111,44 +110,6 @@ func canonicalPath(path string) (string, error) {
 	return filepath.Clean(resolved), nil
 }
 
-func ensureGitignore(repoPath string) error {
-	path := filepath.Join(repoPath, ".gitignore")
-	existing, _ := os.ReadFile(path)
-	text := string(existing)
-	lines := []string{".gitfuse/queue/", ".gitfuse/snapshots/", ".gitfuse/backup/"}
-	var missing []string
-	for _, line := range lines {
-		if !strings.Contains(text, line) {
-			missing = append(missing, line)
-		}
-	}
-	if len(missing) == 0 {
-		return nil
-	}
-	if text != "" && !strings.HasSuffix(text, "\n") {
-		text += "\n"
-	}
-	text += strings.Join(missing, "\n") + "\n"
-	return os.WriteFile(path, []byte(text), 0o644)
-}
-
-func stageGitfuseFiles(repoPath string) error {
-	repo, err := gogit.PlainOpenWithOptions(repoPath, &gogit.PlainOpenOptions{DetectDotGit: true})
-	if err != nil {
-		return err
-	}
-	worktree, err := repo.Worktree()
-	if err != nil {
-		return err
-	}
-	for _, path := range []string{".gitfuse/config", ".gitfuse/ledger"} {
-		if _, err := worktree.Add(path); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 type registeredRelayRepo struct {
 	RelayEntryID string
 	RemoteURL    string
@@ -157,14 +118,18 @@ type registeredRelayRepo struct {
 func registerRepo(ctx context.Context, rootSHA, displayName string) (registeredRelayRepo, error) {
 	token := deviceToken()
 	if token == "" {
-		return registeredRelayRepo{}, fmt.Errorf("not authenticated; run 'gitfuse auth' first")
+		return registeredRelayRepo{}, fmt.Errorf(notAuthenticatedMessage)
+	}
+	relayURL, err := relayBaseURLOrError()
+	if err != nil {
+		return registeredRelayRepo{}, err
 	}
 	payload, _ := json.Marshal(map[string]string{
 		"rootSha":     rootSHA,
 		"displayName": displayName,
 		"remoteUrl":   "",
 	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, relayBaseURL()+"/v1/repos", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, relayURL+"/v1/repos", bytes.NewReader(payload))
 	if err != nil {
 		return registeredRelayRepo{}, err
 	}

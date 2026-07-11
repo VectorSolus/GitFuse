@@ -53,6 +53,9 @@ func runSync(ctx context.Context, cmd *cobra.Command, opts syncOptions, commitRa
 	if err := gfgit.PreflightCheck(repoPath); err != nil {
 		return err
 	}
+	if err := protectGitfuseMetadata(repoPath); err != nil {
+		return err
+	}
 	localCfg, err := config.ReadLocalConfig(repoPath)
 	if err != nil {
 		return fmt.Errorf("read .gitfuse/config: %w", err)

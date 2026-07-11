@@ -52,7 +52,7 @@ func runConnect(cmd *cobra.Command) error {
 		if os.Getenv("GITFUSE_NONINTERACTIVE") == "1" {
 			fmt.Fprintln(cmd.OutOrStdout(), "TUI repo picker launched.")
 		}
-		selected, err := tui.PickRepo(options)
+		selected, err := tui.PickRepoWithTitle(options, "Connect a repository")
 		if err != nil {
 			return err
 		}
@@ -73,7 +73,7 @@ func runConnect(cmd *cobra.Command) error {
 	if os.Getenv("GITFUSE_NONINTERACTIVE") == "1" {
 		fmt.Fprintln(cmd.OutOrStdout(), "TUI repo picker launched.")
 	}
-	selected, err := tui.PickRepo(options)
+	selected, err := tui.PickRepoWithTitle(options, "Connect a repository")
 	if err != nil {
 		return err
 	}
@@ -96,6 +96,9 @@ func linkRelayRepository(path string, repo relayRepository) error {
 	if err != nil {
 		return err
 	}
+	if err := protectGitfuseMetadata(canonical); err != nil {
+		return err
+	}
 	if _, err := config.WriteLocalConfig(canonical, config.LocalConfig{
 		RootSHA:      repo.RootSHA,
 		RelayEntryID: repo.RelayEntryID,
@@ -106,6 +109,9 @@ func linkRelayRepository(path string, repo relayRepository) error {
 		return err
 	}
 	if _, err := workspace.WriteLedger(canonical, workspace.Ledger{}); err != nil {
+		return err
+	}
+	if err := unstageGitfuseMetadata(canonical); err != nil {
 		return err
 	}
 	credentials, _ := config.ReadCredentials()

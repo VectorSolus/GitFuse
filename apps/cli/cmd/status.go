@@ -65,6 +65,9 @@ type repoStatus struct {
 }
 
 func collectRepoStatus(repoPath string) (repoStatus, error) {
+	if err := protectGitfuseMetadata(repoPath); err != nil {
+		return repoStatus{}, err
+	}
 	localCfg, err := config.ReadLocalConfig(repoPath)
 	if err != nil {
 		return repoStatus{}, fmt.Errorf("read .gitfuse/config: %w", err)
