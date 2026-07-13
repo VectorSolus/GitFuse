@@ -31,12 +31,32 @@ const sections = [
     label: "Sync workflow",
   },
   {
-    id: "status",
-    label: "Status",
+    id: "status-history",
+    label: "Status & history",
+  },
+  {
+    id: "devices",
+    label: "Devices",
   },
   {
     id: "auto-sync",
     label: "Auto sync",
+  },
+  {
+    id: "pause-resume",
+    label: "Pause & resume",
+  },
+  {
+    id: "recovery",
+    label: "Recovery",
+  },
+  {
+    id: "account-config",
+    label: "Account & config",
+  },
+  {
+    id: "legacy-helpers",
+    label: "Legacy helpers",
   },
 ];
 
@@ -81,6 +101,10 @@ const commandGroups = [
         command: "gitfuse auth login",
       },
       {
+        label: "Start headless auth flow",
+        command: "gitfuse auth login --headless",
+      },
+      {
         label: "Show current identity",
         command: "gitfuse auth whoami",
       },
@@ -108,6 +132,14 @@ const commandGroups = [
         label: "Remove repository",
         command: "gitfuse repo remove <repo>",
       },
+      {
+        label: "Choose active repository",
+        command: "gitfuse repos",
+      },
+      {
+        label: "Set active repository",
+        command: "gitfuse use <name>",
+      },
     ],
   },
   {
@@ -121,32 +153,68 @@ const commandGroups = [
         command: "gitfuse sync",
       },
       {
+        label: "Preview sync",
+        command: "gitfuse sync --dry-run",
+      },
+      {
+        label: "Pick commits interactively",
+        command: "gitfuse sync --pick",
+      },
+      {
+        label: "Sync all commits",
+        command: "gitfuse sync --all",
+      },
+      {
         label: "Pull synced commits",
         command: "gitfuse pull",
       },
       {
-        label: "Rebase after pulling",
+        label: "Pull into a new branch",
+        command: "gitfuse pull --as-branch <branch>",
+      },
+      {
+        label: "Sync rebased history",
         command: "gitfuse rebase-sync",
       },
     ],
   },
   {
-    id: "status",
-    eyebrow: "Status",
+    id: "status-history",
+    eyebrow: "Status & history",
     title: "Inspect repository and relay state.",
-    body: "Use status commands to understand what is tracked, what is pending, and what has already been moved.",
+    body: "Use status and history commands to understand what is tracked, what is pending, and what has already moved through the relay.",
     commands: [
       {
-        label: "Workspace status",
+        label: "Repository status",
         command: "gitfuse status",
+      },
+      {
+        label: "All tracked repository statuses",
+        command: "gitfuse status --all",
       },
       {
         label: "Recent relay history",
         command: "gitfuse history",
       },
       {
-        label: "Connected devices",
+        label: "Legacy history alias",
+        command: "gitfuse log",
+      },
+    ],
+  },
+  {
+    id: "devices",
+    eyebrow: "Devices",
+    title: "View and manage connected machines.",
+    body: "Device commands show which machines are connected to your GitFuse workspace and allow a registered device to be revoked.",
+    commands: [
+      {
+        label: "List connected devices",
         command: "gitfuse devices",
+      },
+      {
+        label: "Revoke a device",
+        command: "gitfuse devices revoke <id>",
       },
     ],
   },
@@ -157,16 +225,136 @@ const commandGroups = [
     body: "Enable, disable, and inspect automatic sync for the active repository from the same command group.",
     commands: [
       {
+        label: "Show auto sync status",
+        command: "gitfuse autosync status",
+      },
+      {
         label: "Enable auto sync",
         command: "gitfuse autosync enable",
+      },
+      {
+        label: "Enable with delay",
+        command: "gitfuse autosync enable --delay 5s",
       },
       {
         label: "Disable auto sync",
         command: "gitfuse autosync disable",
       },
       {
-        label: "Show auto sync status",
-        command: "gitfuse autosync status",
+        label: "Legacy start command",
+        command: "gitfuse start --auto",
+      },
+    ],
+  },
+  {
+    id: "pause-resume",
+    eyebrow: "Pause & resume",
+    title: "Temporarily stop or restart sync.",
+    body: "Pause prevents GitFuse from syncing, while resume returns the repository to normal synced operation.",
+    commands: [
+      {
+        label: "Pause sync",
+        command: "gitfuse pause",
+      },
+      {
+        label: "Pause until an event",
+        command: "gitfuse pause --until <event>",
+      },
+      {
+        label: "Resume sync",
+        command: "gitfuse resume",
+      },
+      {
+        label: "Resume from recent commits",
+        command: "gitfuse resume --from <count>",
+      },
+    ],
+  },
+  {
+    id: "recovery",
+    eyebrow: "Recovery",
+    title: "Recover or repair repository state.",
+    body: "Recovery commands are useful when restoring a project, claiming transferred work, or correcting relay-side commit state.",
+    commands: [
+      {
+        label: "Restore from relay bundles",
+        command: "gitfuse restore <relay-entry-name>",
+      },
+      {
+        label: "Claim transferred folder",
+        command: "gitfuse claim",
+      },
+      {
+        label: "Connect to existing relay repos",
+        command: "gitfuse connect",
+      },
+      {
+        label: "Reverse last sync event",
+        command: "gitfuse undo",
+      },
+      {
+        label: "Drop relay-side commit",
+        command: "gitfuse drop",
+      },
+      {
+        label: "Inspect local setup",
+        command: "gitfuse doctor",
+      },
+    ],
+  },
+  {
+    id: "account-config",
+    eyebrow: "Account & config",
+    title: "Inspect account limits and local CLI configuration.",
+    body: "These commands help users confirm their current plan, config directory, installed version, and available updates.",
+    commands: [
+      {
+        label: "Show account limits",
+        command: "gitfuse limits",
+      },
+      {
+        label: "Show config directory",
+        command: "gitfuse config-dir",
+      },
+      {
+        label: "Show CLI version",
+        command: "gitfuse version",
+      },
+      {
+        label: "Check for updates",
+        command: "gitfuse update",
+      },
+    ],
+  },
+  {
+    id: "legacy-helpers",
+    eyebrow: "Legacy helpers",
+    title: "Compatibility commands kept for older workflows.",
+    body: "These commands remain available for users who started with the earlier CLI contract.",
+    commands: [
+      {
+        label: "Initialize and register",
+        command: "gitfuse init",
+      },
+      {
+        label: "Open interactive pickers",
+        command: "gitfuse pick",
+      },
+      {
+        label: "Push curated commits",
+        command: "gitfuse push",
+      },
+      {
+        label: "Choose repository alias",
+        command: "gitfuse repos",
+      },
+      {
+        label: "History alias",
+        command: "gitfuse log",
+      },
+      {
+        label: "Automation alias",
+        command: "gitfuse start",
       },
     ],
   },
