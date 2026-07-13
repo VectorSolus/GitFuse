@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -36,6 +38,8 @@ var devicesRevokeCmd = &cobra.Command{
 	},
 }
 
+var deviceRevokeIDPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
 func init() {
 	devicesCmd.AddCommand(devicesRevokeCmd)
 	rootCmd.AddCommand(devicesCmd)
@@ -62,26 +66,38 @@ func runDevices(ctx context.Context, cmd *cobra.Command) error {
 }
 
 func runDeviceRevoke(ctx context.Context, cmd *cobra.Command, id string) error {
+	deviceID, err := validateDeviceRevokeID(id)
+	if err != nil {
+		return err
+	}
 	if fixture := os.Getenv("GITFUSE_DEVICES_FIXTURE"); fixture != "" {
-		if err := writeRevocationFixture(id); err != nil {
+		if err := writeRevocationFixture(deviceID); err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Revoked device %s.\n", id)
+		fmt.Fprintf(cmd.OutOrStdout(), "Revoked device %s.\n", deviceID)
 		return nil
 	}
 	relayURL, err := relayBaseURLOrError()
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, relayURL+"/v1/devices/"+id, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, relayURL+"/v1/devices/"+deviceID, nil)
 	if err != nil {
 		return err
 	}
 	if _, _, err := doAuthorizedRequest(req); err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Revoked device %s.\n", id)
+	fmt.Fprintf(cmd.OutOrStdout(), "Revoked device %s.\n", deviceID)
 	return nil
+}
+
+func validateDeviceRevokeID(id string) (string, error) {
+	deviceID := strings.TrimSpace(id)
+	if !deviceRevokeIDPattern.MatchString(deviceID) {
+		return "", fmt.Errorf("invalid device id: %s", deviceID)
+	}
+	return deviceID, nil
 }
 
 func loadDevices(ctx context.Context) ([]deviceRecord, error) {
