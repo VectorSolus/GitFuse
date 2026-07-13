@@ -69,7 +69,11 @@ func runDeviceRevoke(ctx context.Context, cmd *cobra.Command, id string) error {
 		fmt.Fprintf(cmd.OutOrStdout(), "Revoked device %s.\n", id)
 		return nil
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, relayBaseURL()+"/v1/devices/"+id, nil)
+	relayURL, err := relayBaseURLOrError()
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, relayURL+"/v1/devices/"+id, nil)
 	if err != nil {
 		return err
 	}
@@ -88,7 +92,11 @@ func loadDevices(ctx context.Context) ([]deviceRecord, error) {
 		}
 		return decodeDevices(content)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, relayBaseURL()+"/v1/devices", nil)
+	relayURL, err := relayBaseURLOrError()
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, relayURL+"/v1/devices", nil)
 	if err != nil {
 		return nil, err
 	}

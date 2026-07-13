@@ -109,3 +109,26 @@ func TestRootSHAFromRepositoryNoHead(t *testing.T) {
 		t.Fatalf("empty repo error = %v, want missing head", err)
 	}
 }
+
+func TestHasUnbornHEAD(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := gogit.PlainInit(dir, false); err != nil {
+		t.Fatal(err)
+	}
+	unborn, err := HasUnbornHEAD(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !unborn {
+		t.Fatal("newly initialized repository should have an unborn HEAD")
+	}
+
+	committedDir, _, _ := testRepo(t)
+	unborn, err = HasUnbornHEAD(committedDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unborn {
+		t.Fatal("repository with a committed HEAD was reported as unborn")
+	}
+}

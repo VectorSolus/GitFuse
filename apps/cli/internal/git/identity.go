@@ -105,6 +105,21 @@ func PreflightCheck(path string) error {
 	return nil
 }
 
+func HasUnbornHEAD(path string) (bool, error) {
+	repo, err := OpenRepository(path)
+	if err != nil {
+		return false, err
+	}
+	_, err = repo.Head()
+	if err == nil {
+		return false, nil
+	}
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return true, nil
+	}
+	return false, err
+}
+
 func ValidateLayerOneRoot(localRootSHA, incomingRootSHA string) error {
 	if localRootSHA == "" || incomingRootSHA == "" || localRootSHA != incomingRootSHA {
 		return fmt.Errorf("%w: local %s incoming %s", ErrRootSHAMismatch, localRootSHA, incomingRootSHA)
