@@ -90,3 +90,5 @@ VERIFICATION.md
 TASKS.md
 Codex_Plan.md
 IMPLEMENTATION_PLAN.md
+.gitfuse/
+apps/dashboard/tsconfig.tsbuildinfo
