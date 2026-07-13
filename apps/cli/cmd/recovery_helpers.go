@@ -27,9 +27,13 @@ func loadRelayRepositories() ([]relayRepository, error) {
 		return decodeRelayRepositories(content)
 	}
 	if deviceToken() == "" {
-		return nil, fmt.Errorf("not authenticated; run 'gitfuse auth' first")
+		return nil, fmt.Errorf(notAuthenticatedMessage)
 	}
-	req, err := http.NewRequest(http.MethodGet, relayBaseURL()+"/v1/repos", nil)
+	relayURL, err := relayBaseURLOrError()
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodGet, relayURL+"/v1/repos", nil)
 	if err != nil {
 		return nil, err
 	}

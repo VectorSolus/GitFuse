@@ -143,17 +143,21 @@ func retryQueuedBundlesOnce(ctx context.Context, cmd *cobra.Command, repoPath st
 		}
 		return err
 	}
-	relayURL := os.Getenv("GITFUSE_RELAY_URL")
 	token := os.Getenv("GITFUSE_TEST_TOKEN")
-	if relayURL == "" || token == "" {
+	if token == "" {
 		fmt.Fprintf(cmd.OutOrStdout(), "Queue retry skipped; relay credentials not configured (%d queued bundle(s)).\n", len(bundleQueueFiles(entries)))
+		return nil
+	}
+	relayURL, err := relayBaseURLOrError()
+	if err != nil {
+		fmt.Fprintf(cmd.OutOrStdout(), "Queue retry skipped; relay URL is not configured (%d queued bundle(s)).\n", len(bundleQueueFiles(entries)))
 		return nil
 	}
 	localCfg, err := config.ReadLocalConfig(repoPath)
 	if err != nil {
 		return err
 	}
-	client := relay.NewClient(strings.TrimRight(relayURL, "/"), token)
+	client := relay.NewClient(relayURL, token)
 	retried := 0
 	for _, entry := range bundleQueueFiles(entries) {
 		path := filepath.Join(relay.QueueDir(repoPath), entry.Name())

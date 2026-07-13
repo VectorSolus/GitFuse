@@ -40,13 +40,17 @@ func runLimits(ctx context.Context, cmd *cobra.Command) error {
 
 func loadAccountLimits(ctx context.Context) (accountLimitsResponse, error) {
 	var limits accountLimitsResponse
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, relayBaseURL()+"/v1/account/limits", nil)
+	token := deviceToken()
+	if token == "" {
+		return limits, fmt.Errorf(notAuthenticatedMessage)
+	}
+	relayURL, err := relayBaseURLOrError()
 	if err != nil {
 		return limits, err
 	}
-	token := deviceToken()
-	if token == "" {
-		return limits, fmt.Errorf("not authenticated; run 'gitfuse auth'")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, relayURL+"/v1/account/limits", nil)
+	if err != nil {
+		return limits, err
 	}
 	return loadAccountLimitsFromRequest(req, token)
 }

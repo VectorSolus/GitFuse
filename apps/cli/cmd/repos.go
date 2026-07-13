@@ -43,14 +43,14 @@ func runRepos(cmd *cobra.Command) error {
 	if os.Getenv("GITFUSE_NONINTERACTIVE") == "1" {
 		fmt.Fprintln(cmd.OutOrStdout(), "TUI repo picker launched.")
 	}
-	selected, err := tui.PickRepo(options)
+	selected, err := tui.PickRepoWithTitle(options, "Choose a GitFuse repository")
 	if err != nil {
 		return err
 	}
 	if _, err := config.WriteActiveRepo(config.ActiveRepo{Name: selected.Name, Path: selected.Path}); err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Active repo: %s (%s)\n", selected.Name, selected.Path)
+	fmt.Fprintf(cmd.OutOrStdout(), "Active repository: %s\n", selected.Name)
 	return nil
 }
 

@@ -180,7 +180,7 @@ func runRestoreWithFixture(t *testing.T, workDir string, fixture restoreFixture,
 
 	t.Setenv("GITFUSE_RELAY_URL", "http://restore.test")
 	t.Setenv("GITFUSE_TEST_TOKEN", "restore-token")
-	t.Setenv("GITFUSE_HOME", t.TempDir())
+	t.Setenv("GITFUSE_CONFIG_DIR", t.TempDir())
 
 	previous, err := os.Getwd()
 	if err != nil {

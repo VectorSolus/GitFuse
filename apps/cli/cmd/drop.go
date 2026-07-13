@@ -121,13 +121,16 @@ func confirm(cmd *cobra.Command, prompt string) (bool, error) {
 }
 
 func deleteRelayBundleIfConfigured(ctx context.Context, fallbackID string) error {
-	relayURL := strings.TrimRight(os.Getenv("GITFUSE_RELAY_URL"), "/")
 	token := os.Getenv("GITFUSE_TEST_TOKEN")
 	bundleID := os.Getenv("GITFUSE_DROP_BUNDLE_ID")
 	if bundleID == "" {
 		bundleID = os.Getenv("GITFUSE_UNDO_BUNDLE_ID")
 	}
-	if relayURL == "" || token == "" || bundleID == "" {
+	if token == "" || bundleID == "" {
+		return nil
+	}
+	relayURL, err := relayBaseURLOrError()
+	if err != nil {
 		return nil
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, relayURL+"/v1/bundles/"+bundleID, nil)
