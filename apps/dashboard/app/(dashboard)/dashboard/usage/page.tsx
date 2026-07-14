@@ -3,11 +3,13 @@
 import { PLAN_LIMITS } from "@gitfuse/types/billing";
 import { useMemo, useState } from "react";
 
+import { DashboardDataError } from "@/components/dashboard/data-error";
 import { useDashboardData, type DashboardData } from "@/hooks/use-dashboard-data";
 
 type UsageMetricId = "repositories" | "devices" | "storage" | "history" | "bundle";
 
 type UsageDetailRow = {
+  id: string;
   name: string;
   meta: string;
   value?: string;
@@ -38,7 +40,7 @@ const proFeatures = [
 ];
 
 export default function UsagePage() {
-  const { data } = useDashboardData();
+  const { data, error, loading } = useDashboardData();
   const [selectedMetricId, setSelectedMetricId] =
     useState<UsageMetricId>("repositories");
   const [billingOpen, setBillingOpen] = useState(false);
@@ -48,6 +50,10 @@ export default function UsagePage() {
   const selectedMetric = useMemo(() => {
     return usageMetrics.find((metric) => metric.id === selectedMetricId);
   }, [selectedMetricId]);
+
+  if (error && !loading) {
+    return <DashboardDataError message={error} />;
+  }
 
   return (
     <div className="gf-usage-page">
@@ -161,7 +167,7 @@ export default function UsagePage() {
 
                 {selectedMetric.rows.length > 0 ? (
                   selectedMetric.rows.map((row) => (
-                    <div key={`${selectedMetric.id}-${row.name}`} className="gf-usage-detail-row">
+                    <div key={`${selectedMetric.id}-${row.id}`} className="gf-usage-detail-row">
                       <div>
                         <strong>{row.name}</strong>
                         <p>{row.meta}</p>
@@ -341,6 +347,7 @@ function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
       rowsTitle: "Synced repositories",
       emptyText: "No repositories have been synced yet.",
       rows: repos.map((repo) => ({
+        id: repo.id,
         name: repo.displayName,
         meta: repo.relayEntryId,
         value: `${repo.activeBundleCount} bundles`,
@@ -359,6 +366,7 @@ function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
       rowsTitle: "Linked devices",
       emptyText: "No devices are linked yet.",
       rows: devices.map((device) => ({
+        id: device.id,
         name: device.name,
         meta: device.lastActiveAt ? `Last active ${formatDate(device.lastActiveAt)}` : "No activity recorded",
         value: device.status,
@@ -381,6 +389,7 @@ function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
       rows: repos
         .filter((repo) => repo.activeStorageBytes > 0)
         .map((repo) => ({
+          id: repo.id,
           name: repo.displayName,
           meta: "Encrypted relay payloads",
           value: formatBytes(repo.activeStorageBytes),
@@ -399,6 +408,7 @@ function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
       rowsTitle: "History coverage",
       emptyText: "No sync history is available yet.",
       rows: history.map((event) => ({
+        id: event.id,
         name: event.repositoryName,
         meta: `${event.eventType} by ${event.deviceName}`,
         value: formatDate(event.createdAt),
@@ -420,6 +430,7 @@ function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
       emptyText: "No bundles have been created yet.",
       rows: (usage?.recentBundles ?? [])
         .map((bundle) => ({
+          id: `${bundle.repositoryName}-${bundle.syncedAt}-${bundle.sizeBytes}`,
           name: bundle.repositoryName,
           meta: `${bundle.deviceName ?? "Unknown device"} · ${formatDate(bundle.syncedAt)}`,
           value: formatBytes(bundle.sizeBytes),

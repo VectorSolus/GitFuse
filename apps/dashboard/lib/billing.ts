@@ -69,7 +69,9 @@ type RazorpaySubscriptionEntity = {
 type RazorpayPaymentEntity = {
   id?: string | null;
   subscription_id?: string | null;
+  order_id?: string | null;
   status?: string | null;
+  created_at?: number | null;
 };
 
 type RazorpayConfig = {
@@ -113,6 +115,30 @@ export type RazorpayCheckoutResult =
       error: string;
       message: string;
     };
+
+export type BillingCountry = "IN" | "US" | "default";
+
+export type ResolvedUpgradePrice = {
+  country: BillingCountry;
+  tier: PaidPlanTier;
+  amount: number;
+  currency: "INR" | "USD";
+};
+
+const upgradePricing: Record<BillingCountry, Record<PaidPlanTier, ResolvedUpgradePrice>> = {
+  IN: {
+    pro: { country: "IN", tier: "pro", amount: 749, currency: "INR" },
+    team: { country: "IN", tier: "team", amount: 1499, currency: "INR" },
+  },
+  US: {
+    pro: { country: "US", tier: "pro", amount: 9, currency: "USD" },
+    team: { country: "US", tier: "team", amount: 18, currency: "USD" },
+  },
+  default: {
+    pro: { country: "default", tier: "pro", amount: 9, currency: "USD" },
+    team: { country: "default", tier: "team", amount: 18, currency: "USD" },
+  },
+};
 
 const razorpayPlanEnv: Record<PaidPlanTier, string> = {
   pro: "RAZORPAY_PRO_PLAN_ID",
@@ -255,6 +281,65 @@ export function getRazorpayConfigForTier(
 }
 
 export const getRazorpayConfigForPlan = getRazorpayConfigForTier;
+
+export function resolveBillingCountry(country: string | null | undefined): BillingCountry {
+  const normalized = country?.trim().toUpperCase();
+  return normalized === "IN" || normalized === "US" ? normalized : "default";
+}
+
+export function resolveUpgradePrice(
+  country: string | null | undefined,
+  tier: PaidPlanTier = "pro",
+): ResolvedUpgradePrice {
+  return upgradePricing[resolveBillingCountry(country)][tier];
+}
+
+export async function createRazorpayOrder(input: {
+  userId: string;
+  tier: PaidPlanTier;
+  country?: string | null;
+}) {
+  const keyId = readEnv("RAZORPAY_KEY_ID");
+  const keySecret = readEnv("RAZORPAY_KEY_SECRET");
+  if (!keyId || !keySecret) {
+    return {
+      ok: false as const,
+      error: "Missing Razorpay config: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET",
+      message: "Missing Razorpay config: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET",
+    };
+  }
+
+  const row = await findBillingRow({ id: input.userId });
+  if (!row) {
+    throw new Error("Authenticated GitFuse account was not found.");
+  }
+
+  const price = resolveUpgradePrice(input.country, input.tier);
+  // Razorpay accounts must be approved for international collection before non-INR orders work in production.
+  const order = await getRazorpayClient({ keyId, keySecret }).orders.create({
+    amount: price.amount * 100,
+    currency: price.currency,
+    receipt: `gitfuse_${row.user_id.slice(0, 8)}_${Date.now()}`,
+    notes: {
+      gitfuse_user_id: row.user_id,
+      gitfuse_tier: input.tier,
+      gitfuse_country: price.country,
+    },
+  });
+
+  return {
+    ok: true as const,
+    provider: "razorpay" as const,
+    orderId: order.id,
+    amount: price.amount,
+    currency: price.currency,
+    country: price.country,
+    keyId,
+    name: row.user_name,
+    email: row.user_email,
+    plan: input.tier,
+  };
+}
 
 function emptyBilling(): DashboardBilling {
   return {

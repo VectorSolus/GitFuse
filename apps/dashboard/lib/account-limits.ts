@@ -1,6 +1,7 @@
 import {
   accountLimitsForTier,
   accountTierForPlan,
+  effectivePlanTier,
   type AccountLimitsResponse,
   type PlanTier,
 } from "@gitfuse/types/billing";
@@ -15,16 +16,24 @@ export async function getDashboardAccountLimits(
 ): Promise<AccountLimitsResponse> {
   const sql = getSql();
   const [tierRow] = await sql<{
-    tier: "free" | "paid" | null;
-    plan_tier: PlanTier | null;
+    tier: PlanTier | null;
+    requested_tier: PlanTier | null;
+    payment_provider: string | null;
+    subscription_status: string | null;
   }[]>`
-    select users.tier, plans.tier as plan_tier
-    from users
-    left join plans on plans.user_id = users.id
-    where users.id = ${account.id}
+    select tier, requested_tier, payment_provider, subscription_status
+    from plans
+    where user_id = ${account.id}
     limit 1
   `;
-  const tier = tierRow?.tier ?? accountTierForPlan(tierRow?.plan_tier);
+  const tier = accountTierForPlan(
+    effectivePlanTier({
+      tier: tierRow?.tier,
+      requestedTier: tierRow?.requested_tier,
+      paymentProvider: tierRow?.payment_provider,
+      subscriptionStatus: tierRow?.subscription_status,
+    }),
+  );
   const limits = accountLimitsForTier(tier);
   const [devices] = await sql<{ count: number | string }[]>`
     select count(*)::int as count

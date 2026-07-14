@@ -18,8 +18,11 @@ export async function POST(request: Request) {
   const account = await upsertDashboardAccount({
     githubId: body.githubId,
     githubUsername: body.githubUsername,
-    email: body.email
+    email: body.email,
   });
 
-  return NextResponse.json({ userId: account.user.id, tier: account.plan?.tier ?? "free" });
+  return NextResponse.json({
+    userId: account.user.id,
+    tier: account.plan?.tier ?? "free",
+  });
 }

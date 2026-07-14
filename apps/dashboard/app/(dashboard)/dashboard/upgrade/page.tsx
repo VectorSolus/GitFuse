@@ -2,7 +2,7 @@
 
 import { PLAN_LIMITS, type PlanTier } from "@gitfuse/types/billing";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 
@@ -53,7 +53,10 @@ type Plan = {
   }[];
 };
 
-function buildPlans(currentTier: string): Plan[] {
+function buildPlans(
+  currentTier: string,
+  prices: Partial<Record<"pro" | "team", string>>,
+): Plan[] {
   return [
     {
       name: "Free",
@@ -69,7 +72,7 @@ function buildPlans(currentTier: string): Plan[] {
     {
       name: "Pro",
       tier: "pro",
-      price: "$9/mo",
+      price: prices.pro ?? "$9/mo",
       badge: currentTier === "pro" ? "Current plan" : "Recommended",
       current: currentTier === "pro",
       highlighted: true,
@@ -84,7 +87,7 @@ function buildPlans(currentTier: string): Plan[] {
     {
       name: "Team",
       tier: "team",
-      price: "$18/user/mo",
+      price: prices.team ?? "$18/user/mo",
       badge: currentTier === "team" ? "Current plan" : "For teams",
       current: currentTier === "team",
       description:
@@ -147,8 +150,42 @@ export default function UpgradePage() {
   const [checkoutPendingTier, setCheckoutPendingTier] = useState<
     "pro" | "team" | null
   >(null);
+  const [priceLabels, setPriceLabels] = useState<
+    Partial<Record<"pro" | "team", string>>
+  >({});
   const currentTier = data?.billing.tier ?? "free";
-  const plans = useMemo(() => buildPlans(currentTier), [currentTier]);
+  const plans = useMemo(() => buildPlans(currentTier, priceLabels), [currentTier, priceLabels]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPrices() {
+      const entries = await Promise.all(
+        (["pro", "team"] as const).map(async (tier) => {
+          const response = await fetch(`/api/billing/price?tier=${tier}`, {
+            cache: "no-store",
+          });
+          if (!response.ok) return [tier, null] as const;
+          const price = (await response.json()) as {
+            amount: number;
+            currency: string;
+          };
+          return [tier, formatPrice(price.amount, price.currency)] as const;
+        }),
+      );
+      if (!cancelled) {
+        setPriceLabels(
+          Object.fromEntries(
+            entries.filter((entry): entry is readonly ["pro" | "team", string] => Boolean(entry[1])),
+          ),
+        );
+      }
+    }
+
+    void loadPrices().catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleUpgrade(plan: Plan) {
     if (plan.tier === "free") return;
@@ -499,6 +536,15 @@ function formatBytes(bytes: number) {
   }
 
   return `${value >= 10 || index === 0 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
+}
+
+function formatPrice(amount: number, currency: string) {
+  const locale = currency === "INR" ? "en-IN" : "en-US";
+  return `${new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amount)}/mo`;
 }
 
 function titleCase(value: string) {
