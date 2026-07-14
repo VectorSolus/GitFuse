@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { DashboardBilling } from "@/lib/billing";
+import type { DashboardDeviceSummary } from "@/lib/device-summary";
 import type { DashboardDevice } from "@/lib/devices";
 import type { DashboardSyncEvent } from "@/lib/history";
 import type { DashboardRepository } from "@/lib/repositories";
 import type { DashboardUsage } from "@/lib/usage";
+import type { PairingSecuritySummary } from "@/lib/pairing-pin";
 import type { AccountLimitsResponse } from "@gitfuse/types/billing";
 
 export type DashboardData = {
@@ -15,10 +17,16 @@ export type DashboardData = {
   };
   repositories: DashboardRepository[];
   devices: DashboardDevice[];
+  deviceSummary?: DashboardDeviceSummary;
   history: DashboardSyncEvent[];
   usage: DashboardUsage;
   accountLimits: AccountLimitsResponse;
   billing: DashboardBilling;
+  security: PairingSecuritySummary;
+  authProviders: {
+    github: boolean;
+    google: boolean;
+  };
   historyYears: number[];
   selectedHistoryYear: number;
 };
@@ -27,6 +35,7 @@ export function useDashboardData(year?: number) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshIndex, setRefreshIndex] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,7 +81,11 @@ export function useDashboardData(year?: number) {
     return () => {
       cancelled = true;
     };
-  }, [year]);
+  }, [year, refreshIndex]);
 
-  return { data, error, loading };
+  const refresh = useCallback(() => {
+    setRefreshIndex((current) => current + 1);
+  }, []);
+
+  return { data, error, loading, refresh };
 }

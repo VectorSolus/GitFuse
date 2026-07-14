@@ -21,7 +21,14 @@ function jsonError(error: string, message: string, status: number) {
 }
 
 export async function POST(_request: Request, context: RouteContext) {
-  const session = await auth().catch(() => null);
+  const session = await auth().catch((error) => {
+    console.error("[api:dashboard:devices:revoke:auth]", error);
+    return "auth_unavailable" as const;
+  });
+
+  if (session === "auth_unavailable") {
+    return jsonError("DEVICE_REVOKE_FAILED", "Could not revoke this device.", 503);
+  }
 
   if (!session?.user) {
     return jsonError("UNAUTHENTICATED", "Sign in is required.", 401);
@@ -39,7 +46,14 @@ export async function POST(_request: Request, context: RouteContext) {
   const databaseUser = await findDashboardAccountForSession({
     id: session.user.id,
     email: session.user.email,
-  }).catch(() => null);
+  }).catch((error) => {
+    console.error("[api:dashboard:devices:revoke:account]", error);
+    return "account_unavailable" as const;
+  });
+
+  if (databaseUser === "account_unavailable") {
+    return jsonError("DEVICE_REVOKE_FAILED", "Could not revoke this device.", 503);
+  }
 
   if (!databaseUser) {
     return jsonError("SESSION_EXPIRED", "Your session expired. Please sign in again.", 401);
