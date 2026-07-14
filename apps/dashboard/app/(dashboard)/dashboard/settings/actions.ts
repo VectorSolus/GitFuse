@@ -1,8 +1,17 @@
 "use server";
 
 import { auth } from "@/lib/auth";
-import { findDashboardAccountForSession } from "@/lib/account";
+import { deleteDashboardAccountWithOtp } from "@/lib/account-delete";
+import {
+  findDashboardAccountForSession,
+  updateDashboardAccountProfile,
+} from "@/lib/account";
 import { getSql } from "@/lib/db";
+import {
+  requestPairingPinRevealOtp,
+  revealPairingPinWithOtp,
+  setPairingPin,
+} from "@/lib/pairing-pin";
 import {
   createOtp,
   isValidEmail,
@@ -16,6 +25,7 @@ type ActionResult = {
   ok: boolean;
   error?: string;
   email?: string;
+  displayName?: string;
 };
 
 type DeleteCurrentAccountResult = ActionResult & {
@@ -67,6 +77,44 @@ export async function requestEmailOtp(email: string): Promise<ActionResult> {
   } catch (error) {
     console.error("[add-email]", error);
     return { ok: false, error: "Could not send verification code." };
+  }
+}
+
+export async function updateProfileAction(input: {
+  displayName: string;
+}): Promise<ActionResult> {
+  const displayName = input.displayName.trim().replace(/\s+/g, " ");
+
+  if (!displayName) {
+    return { ok: false, error: "Enter a display name." };
+  }
+
+  if (displayName.length > 80) {
+    return { ok: false, error: "Display name must be 80 characters or fewer." };
+  }
+
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return {
+        ok: false,
+        error: "You must be signed in to update your profile.",
+      };
+    }
+
+    const updated = await updateDashboardAccountProfile({
+      userId: user.id,
+      displayName,
+    });
+
+    if (!updated) {
+      return { ok: false, error: "Could not update your profile." };
+    }
+
+    return { ok: true, displayName: updated.display_name };
+  } catch (error) {
+    console.error("[profile-settings]", error);
+    return { ok: false, error: "Could not update your profile." };
   }
 }
 
@@ -152,6 +200,93 @@ export async function requestDeleteAccountOtp(): Promise<ActionResult> {
   }
 }
 
+export async function setPairingPinAction(input: {
+  pin: string;
+  currentPin?: string;
+}): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return {
+        ok: false,
+        error: "You must be signed in to manage your pairing PIN.",
+      };
+    }
+
+    const result = await setPairingPin(user.id, input.pin, {
+      currentPin: input.currentPin,
+    });
+    if (!result.ok) {
+      console.error("[pairing-pin-settings]", result.error);
+      return { ok: false, error: "Could not update your pairing PIN." };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error("[pairing-pin-settings]", error);
+    return { ok: false, error: "Could not update your pairing PIN." };
+  }
+}
+
+export async function requestPairingPinRevealOtpAction(): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return {
+        ok: false,
+        error: "You must be signed in to reveal your pairing PIN.",
+      };
+    }
+
+    const result = await requestPairingPinRevealOtp({
+      userId: user.id,
+      email: user.email,
+    });
+
+    if (!result.ok) {
+      return { ok: false, error: "No pairing PIN is currently set." };
+    }
+
+    return { ok: true, email: user.email };
+  } catch (error) {
+    console.error("[pairing-pin-reveal]", error);
+    return { ok: false, error: "Could not send a reveal code." };
+  }
+}
+
+export async function revealPairingPinAction(otpCode: string): Promise<ActionResult & { pin?: string }> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return {
+        ok: false,
+        error: "You must be signed in to reveal your pairing PIN.",
+      };
+    }
+
+    const result = await revealPairingPinWithOtp({
+      userId: user.id,
+      email: user.email,
+      otpCode,
+    });
+
+    if (!result.ok) {
+      return {
+        ok: false,
+        error:
+          result.error === "invalid_otp"
+            ? "Verification code is invalid or expired."
+            : "Could not reveal your pairing PIN.",
+      };
+    }
+
+    return { ok: true, pin: result.pin };
+  } catch (error) {
+    console.error("[pairing-pin-reveal]", error);
+    return { ok: false, error: "Could not reveal your pairing PIN." };
+  }
+}
+
 export async function deleteCurrentAccountAction(input: {
   otpCode: string;
 }): Promise<DeleteCurrentAccountResult> {
@@ -164,59 +299,24 @@ export async function deleteCurrentAccountAction(input: {
       };
     }
 
-    const userEmail = normalizeEmail(user.email);
+    const result = await deleteDashboardAccountWithOtp({
+      userId: user.id,
+      otpCode: input.otpCode,
+    });
 
-    const verified = await verifyOtp(
-      user.id,
-      userEmail,
-      input.otpCode,
-      "delete_account",
-    );
-
-    if (!verified) {
+    if (!result.ok && result.error === "INVALID_OTP") {
       return {
         ok: false,
         error: "Incorrect verification code.",
       };
     }
 
-    const sql = getSql();
-    await sql.begin(async (transaction) => {
-      const [lockedUser] = await transaction<{
-        id: string;
-        email: string;
-      }[]>`
-        select id, email
-        from users
-        where id = ${user.id}
-        for update
-      `;
-
-      if (!lockedUser) {
-        throw new Error("Authenticated user no longer exists.");
-      }
-
-      const normalizedEmail = normalizeEmail(lockedUser.email);
-
-      await transaction`
-        update bundles
-        set parent_bundle_id = null
-        where repository_id in (
-          select id from repositories where user_id = ${lockedUser.id}
-        )
-      `;
-
-      await transaction`
-        delete from email_verification_otps
-        where email = ${normalizedEmail}
-           or user_id = ${lockedUser.id}
-      `;
-
-      await transaction`
-        delete from users
-        where id = ${lockedUser.id}
-      `;
-    });
+    if (!result.ok) {
+      return {
+        ok: false,
+        error: "Could not delete account. Please try again.",
+      };
+    }
 
     return {
       ok: true,

@@ -42,7 +42,7 @@ export default async function AppDashboardLayout({
   }).catch(() => null);
 
   const user = {
-    name: account.github_username,
+    name: account.display_name || account.github_username,
     email: account.email,
     plan: billing?.tier
       ? ((billing.tier[0].toUpperCase() +

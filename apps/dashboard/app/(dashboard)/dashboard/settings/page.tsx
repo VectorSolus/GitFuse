@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
+import { Eye, EyeOff } from "lucide-react";
+import { PLAN_LIMITS, type PlanTier } from "@gitfuse/types/billing";
 import type {
   ClipboardEvent,
   FormEvent,
@@ -15,6 +17,10 @@ import {
   deleteCurrentAccountAction,
   requestDeleteAccountOtp,
   requestEmailOtp,
+  requestPairingPinRevealOtpAction,
+  revealPairingPinAction,
+  setPairingPinAction,
+  updateProfileAction,
   verifyEmailOtp,
 } from "./actions";
 
@@ -27,6 +33,7 @@ type SettingsSection =
   | "Danger zone";
 
 type AddEmailStep = "email" | "password" | "otp";
+type PairingSecurityData = DashboardData["security"];
 
 type BillingLimit = {
   label: string;
@@ -44,6 +51,13 @@ const settingsSections: SettingsSection[] = [
   "Danger zone",
 ];
 
+const emptyPairingSecurity: PairingSecurityData = {
+  pairingPinSet: false,
+  legacyPairingPinNeedsReset: false,
+  pairingPinUpdatedAt: null,
+  pairingEvents: [],
+};
+
 function getSettingsSectionFromQuery(value: string | null): SettingsSection | null {
   if (!value) return null;
 
@@ -60,10 +74,12 @@ function getSettingsSectionFromQuery(value: string | null): SettingsSection | nu
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const { data } = useDashboardData();
+  const { data, refresh } = useDashboardData();
   const accountEmail = data?.user.email ?? "";
   const displayName = data?.user.name || "GitFuse";
+  const authProviders = data?.authProviders ?? { github: false, google: false };
   const connectedEmails = accountEmail
     ? [
         {
@@ -111,17 +127,27 @@ export default function SettingsPage() {
 
       <section className="gf-settings-v3-main">
         {selectedSection === "Profile" ? (
-          <ProfileSection displayName={displayName} accountEmail={accountEmail} />
+          <ProfileSection
+            displayName={displayName}
+            accountEmail={accountEmail}
+            onSaved={() => {
+              refresh();
+              router.refresh();
+            }}
+          />
         ) : null}
 
         {selectedSection === "Authentication" ? (
           <AuthenticationSection
             connectedEmails={connectedEmails}
+            authProviders={authProviders}
             onAddEmail={() => setAddEmailOpen(true)}
           />
         ) : null}
 
-        {selectedSection === "Security" ? <SecuritySection /> : null}
+        {selectedSection === "Security" ? (
+          <SecuritySection security={data?.security ?? emptyPairingSecurity} />
+        ) : null}
 
         {selectedSection === "Billing" ? (
           <BillingSection
@@ -165,10 +191,45 @@ export default function SettingsPage() {
 function ProfileSection({
   displayName,
   accountEmail,
+  onSaved,
 }: {
   displayName: string;
   accountEmail: string;
+  onSaved: () => void;
 }) {
+  const [draftName, setDraftName] = useState(displayName);
+  const [feedback, setFeedback] = useState("");
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    setDraftName(displayName);
+  }, [displayName]);
+
+  async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending) return;
+
+    setPending(true);
+    setFeedback("");
+
+    try {
+      const result = await updateProfileAction({ displayName: draftName });
+      if (!result.ok) {
+        throw new Error(result.error ?? "Could not update your profile.");
+      }
+
+      if (result.displayName) {
+        setDraftName(result.displayName);
+      }
+      setFeedback("Profile saved.");
+      onSaved();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Could not update your profile.");
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <>
       <section className="gf-settings-v3-hero">
@@ -181,44 +242,69 @@ function ProfileSection({
         </span>
       </section>
 
-      <section className="gf-settings-v3-panel">
+      <form className="gf-settings-v3-panel" onSubmit={handleProfileSubmit}>
         <div className="gf-settings-v3-panel-head">
           <div>
             <p className="gf-dash-eyebrow">Workspace profile</p>
             <h3>Public dashboard details</h3>
           </div>
 
-          <button type="button">Save changes</button>
+          <button type="submit" disabled={pending || !draftName.trim()}>
+            {pending ? "Saving..." : "Save changes"}
+          </button>
         </div>
 
         <div className="gf-settings-v3-form-grid">
           <label>
             Display name
-            <input key={displayName} defaultValue={displayName} />
+            <input
+              value={draftName}
+              maxLength={80}
+              onChange={(event) => setDraftName(event.target.value)}
+            />
           </label>
 
           <label>
             Primary email
-            <input key={accountEmail} defaultValue={accountEmail} />
+            <input key={accountEmail} defaultValue={accountEmail} readOnly />
           </label>
         </div>
+
+        {feedback ? <p className="gf-settings-v3-feedback">{feedback}</p> : null}
 
         <div className="gf-settings-v3-note">
           Profile changes affect your GitFuse dashboard only. They do not edit
           your GitHub or Google account profile.
         </div>
-      </section>
+      </form>
     </>
   );
 }
 
 function AuthenticationSection({
   connectedEmails,
+  authProviders,
   onAddEmail,
 }: {
   connectedEmails: { email: string; status: string }[];
+  authProviders: DashboardData["authProviders"];
   onAddEmail: () => void;
 }) {
+  const oauthProviders = [
+    {
+      key: "github" as const,
+      name: "GitHub OAuth",
+      connectedCopy: "Used for GitHub-based authentication.",
+      availableCopy: "Available for GitHub-based authentication.",
+    },
+    {
+      key: "google" as const,
+      name: "Google OAuth",
+      connectedCopy: "Used for Google-based authentication.",
+      availableCopy: "Available for Google-based authentication.",
+    },
+  ];
+
   return (
     <>
       <section className="gf-settings-v3-hero">
@@ -265,30 +351,131 @@ function AuthenticationSection({
         </div>
 
         <div className="gf-settings-v3-list">
-          <div>
-            <div>
-              <strong>GitHub OAuth</strong>
-              <span>Used for GitHub-based authentication.</span>
-            </div>
+          {oauthProviders.map((provider) => {
+            const connected = authProviders[provider.key];
 
-            <em>Connected</em>
-          </div>
+            return (
+              <div key={provider.key}>
+                <div>
+                  <strong>{provider.name}</strong>
+                  <span>{connected ? provider.connectedCopy : provider.availableCopy}</span>
+                </div>
 
-          <div>
-            <div>
-              <strong>Google OAuth</strong>
-              <span>Available for Google-based authentication.</span>
-            </div>
-
-            <em>Available</em>
-          </div>
+                <em>{connected ? "Connected" : "Available"}</em>
+              </div>
+            );
+          })}
         </div>
       </section>
     </>
   );
 }
 
-function SecuritySection() {
+function SecuritySection({ security }: { security: PairingSecurityData }) {
+  const [currentPin, setCurrentPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [visibleFields, setVisibleFields] = useState<Record<string, boolean>>({});
+  const [revealOpen, setRevealOpen] = useState(false);
+  const [revealOtp, setRevealOtp] = useState("");
+  const [revealedPin, setRevealedPin] = useState("");
+  const [revealFeedback, setRevealFeedback] = useState("");
+  const [revealPending, setRevealPending] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [pending, setPending] = useState(false);
+  const pinFeedback = pairingPinFeedback(newPin);
+  const pinValid = isPairingPinReady(newPin);
+  const pinsMatch = newPin.length > 0 && newPin === confirmPin;
+  const currentPinRequired = security.pairingPinSet;
+  const formReady = pinValid && pinsMatch && (!currentPinRequired || currentPin.trim().length > 0);
+
+  useEffect(() => {
+    if (!revealedPin) return undefined;
+    const timeout = window.setTimeout(() => {
+      setRevealedPin("");
+    }, 30_000);
+
+    return () => window.clearTimeout(timeout);
+  }, [revealedPin]);
+
+  function toggleSecret(field: string) {
+    setVisibleFields((current) => ({
+      ...current,
+      [field]: !current[field],
+    }));
+  }
+
+  async function handlePairingPinSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!formReady) return;
+    setPending(true);
+    setFeedback("");
+
+    try {
+      const result = await setPairingPinAction({
+        pin: newPin,
+        currentPin: currentPinRequired ? currentPin : undefined,
+      });
+      if (!result.ok) {
+        throw new Error(result.error ?? "Could not update your pairing PIN.");
+      }
+      setCurrentPin("");
+      setNewPin("");
+      setConfirmPin("");
+      setFeedback("Pairing PIN updated.");
+      window.location.reload();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Could not update your pairing PIN.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleRevealRequest() {
+    setRevealPending(true);
+    setRevealFeedback("");
+    setRevealedPin("");
+
+    try {
+      const result = await requestPairingPinRevealOtpAction();
+      if (!result.ok) {
+        throw new Error(result.error ?? "Could not send a reveal code.");
+      }
+      setRevealOpen(true);
+      setRevealFeedback(
+        result.email
+          ? `Verification code sent to ${result.email}.`
+          : "Verification code sent.",
+      );
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Could not send a reveal code.");
+    } finally {
+      setRevealPending(false);
+    }
+  }
+
+  async function handleRevealSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (revealOtp.length !== 6) return;
+    setRevealPending(true);
+    setRevealFeedback("");
+    setRevealedPin("");
+
+    try {
+      const result = await revealPairingPinAction(revealOtp);
+      if (!result.ok || !result.pin) {
+        throw new Error(result.error ?? "Could not reveal your pairing PIN.");
+      }
+      setRevealedPin(result.pin);
+      setCurrentPin(result.pin);
+      setRevealFeedback("Pairing PIN revealed for 30 seconds.");
+    } catch (error) {
+      setRevealFeedback(error instanceof Error ? error.message : "Could not reveal your pairing PIN.");
+    } finally {
+      setRevealPending(false);
+    }
+  }
+
   return (
     <>
       <section className="gf-settings-v3-hero">
@@ -299,6 +486,167 @@ function SecuritySection() {
           account recovery, and sensitive action confirmations.
         </span>
       </section>
+
+      <section className="gf-settings-v3-panel">
+        <div className="gf-settings-v3-panel-head">
+          <div>
+            <p className="gf-dash-eyebrow">Device pairing PIN</p>
+            <h3>{security.pairingPinSet ? "Pair new CLI devices" : "Set a pairing PIN"}</h3>
+          </div>
+
+          <em className={security.pairingPinSet ? "gf-pairing-pin-status is-set" : "gf-pairing-pin-status"}>
+            {security.pairingPinSet ? "Set" : "Not set"}
+          </em>
+        </div>
+
+        {security.legacyPairingPinNeedsReset ? (
+          <div className="gf-pairing-pin-warning">
+            Your previous PIN can't be recovered due to a security upgrade — please set a new one.
+          </div>
+        ) : null}
+
+        <form className="gf-pairing-pin-form" onSubmit={handlePairingPinSubmit}>
+          {currentPinRequired ? (
+            <SecretField
+              label="Current PIN"
+              value={currentPin}
+              visible={Boolean(visibleFields.currentPin)}
+              autoComplete="current-password"
+              onChange={setCurrentPin}
+              onToggle={() => toggleSecret("currentPin")}
+            />
+          ) : null}
+
+          <SecretField
+            label={security.pairingPinSet ? "New PIN" : "Pairing PIN"}
+            value={newPin}
+            visible={Boolean(visibleFields.newPin)}
+            autoComplete="new-password"
+            onChange={setNewPin}
+            onToggle={() => toggleSecret("newPin")}
+          />
+
+          <SecretField
+            label="Confirm New PIN"
+            value={confirmPin}
+            visible={Boolean(visibleFields.confirmPin)}
+            autoComplete="new-password"
+            onChange={setConfirmPin}
+            onToggle={() => toggleSecret("confirmPin")}
+          />
+
+          <div className="gf-pairing-pin-strength">
+            <span className={pinValid && pinsMatch ? "is-ready" : ""}>
+              {pinsMatch || !confirmPin ? pinFeedback : "PIN confirmation does not match."}
+            </span>
+            {security.pairingPinUpdatedAt ? (
+              <em>Updated {formatDateTime(security.pairingPinUpdatedAt)}</em>
+            ) : null}
+          </div>
+
+          {feedback ? <p className="gf-pairing-pin-feedback">{feedback}</p> : null}
+
+          <button type="submit" disabled={!formReady || pending}>
+            {pending ? "Saving..." : security.pairingPinSet ? "Change PIN" : "Set PIN"}
+          </button>
+
+          {security.pairingPinSet ? (
+            <button
+              type="button"
+              className="gf-pairing-pin-secondary"
+              onClick={handleRevealRequest}
+              disabled={revealPending}
+            >
+              Forgot your PIN?
+            </button>
+          ) : null}
+        </form>
+
+        <div className="gf-pairing-events">
+          <div className="gf-pairing-events-head">
+            <strong>Devices paired with this PIN</strong>
+            <span>{security.pairingEvents.length} recorded</span>
+          </div>
+
+          {security.pairingEvents.length > 0 ? (
+            <div className="gf-settings-v3-list">
+              {security.pairingEvents.map((event) => (
+                <div key={event.id}>
+                  <div>
+                    <strong>{event.deviceName || "GitFuse CLI device"}</strong>
+                    <span>{formatDateTime(event.createdAt)}</span>
+                  </div>
+
+                  <em>{event.ipAddress || "Unknown IP"}</em>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="gf-settings-v3-upcoming-card">
+              <strong>No PIN pairings yet.</strong>
+              <span>Successful CLI device pairings will appear here.</span>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {revealOpen ? (
+        <div className="gf-pin-reveal-modal" role="dialog" aria-modal="true">
+          <div
+            className="gf-add-email-backdrop"
+            onClick={() => {
+              setRevealOpen(false);
+              setRevealedPin("");
+            }}
+          />
+
+          <form className="gf-pin-reveal-card" onSubmit={handleRevealSubmit}>
+            <button
+              type="button"
+              className="gf-add-email-close"
+              onClick={() => {
+                setRevealOpen(false);
+                setRevealedPin("");
+              }}
+              aria-label="Close PIN reveal"
+            >
+              <CloseIcon />
+            </button>
+
+            <p className="gf-dash-eyebrow">Forgot your PIN?</p>
+            <h3>Email verification required</h3>
+            <span>Enter the OTP sent to your account email to reveal the current pairing PIN.</span>
+
+            <label className="gf-add-email-field">
+              Verification code
+              <div>
+                <ShieldIcon />
+                <input
+                  inputMode="numeric"
+                  placeholder="000000"
+                  maxLength={6}
+                  value={revealOtp}
+                  onChange={(event) => setRevealOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                  autoFocus
+                />
+              </div>
+            </label>
+
+            {revealFeedback ? <p>{revealFeedback}</p> : null}
+
+            {revealedPin ? (
+              <div className="gf-pin-reveal-value">
+                <strong>Current PIN</strong>
+                <code>{revealedPin}</code>
+              </div>
+            ) : null}
+
+            <button type="submit" disabled={revealOtp.length !== 6 || revealPending}>
+              {revealPending ? "Verifying..." : "Reveal PIN"}
+            </button>
+          </form>
+        </div>
+      ) : null}
 
       <section className="gf-settings-v3-panel">
         <div className="gf-settings-v3-panel-head">
@@ -342,6 +690,81 @@ function SecuritySection() {
       </section>
     </>
   );
+}
+
+function SecretField({
+  label,
+  value,
+  visible,
+  autoComplete,
+  onChange,
+  onToggle,
+}: {
+  label: string;
+  value: string;
+  visible: boolean;
+  autoComplete: string;
+  onChange: (value: string) => void;
+  onToggle: () => void;
+}) {
+  return (
+    <label>
+      {label}
+      <div className="gf-secret-input-wrap">
+        <input
+          type={visible ? "text" : "password"}
+          value={value}
+          minLength={8}
+          autoComplete={autoComplete}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <SecretToggle visible={visible} onToggle={onToggle} label={label} />
+      </div>
+    </label>
+  );
+}
+
+function SecretToggle({
+  visible,
+  onToggle,
+  label,
+}: {
+  visible: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="gf-secret-toggle"
+      onClick={onToggle}
+      aria-label={visible ? `Hide ${label}` : `Show ${label}`}
+      title={visible ? `Hide ${label}` : `Show ${label}`}
+    >
+      {visible ? <EyeOff size={17} /> : <Eye size={17} />}
+    </button>
+  );
+}
+
+function isPairingPinReady(pin: string) {
+  return pin.length >= 8 && /[A-Za-z]/.test(pin) && /\d/.test(pin);
+}
+
+function pairingPinFeedback(pin: string) {
+  if (!pin) return "Minimum 8 characters, with at least one letter and one number.";
+  if (pin.length < 8) return "Use at least 8 characters.";
+  if (!/[A-Za-z]/.test(pin) || !/\d/.test(pin)) {
+    return "Add at least one letter and one number.";
+  }
+  if (pin.length >= 12) return "Strong memorable PIN.";
+  return "Good memorable PIN.";
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function BillingSection({
@@ -510,6 +933,7 @@ function AddEmailModal({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<AddEmailStep>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [otp, setOtp] = useState("");
   const [feedback, setFeedback] = useState("");
   const [pending, setPending] = useState(false);
@@ -646,11 +1070,17 @@ function AddEmailModal({ onClose }: { onClose: () => void }) {
                 <div>
                   <LockIcon />
                   <input
-                    type="password"
+                    type={passwordVisible ? "text" : "password"}
                     value={password}
                     placeholder="Minimum 8 characters"
                     onChange={(event) => setPassword(event.target.value)}
                     autoFocus
+                  />
+
+                  <SecretToggle
+                    visible={passwordVisible}
+                    onToggle={() => setPasswordVisible((current) => !current)}
+                    label="New password"
                   />
 
                   <button type="submit" aria-label="Continue to OTP">
@@ -993,32 +1423,31 @@ function BillingModal({
 }
 
 function buildBillingLimits(data: DashboardData | null): BillingLimit[] {
+  const tier = data?.billing.tier ?? "free";
+  const limits = PLAN_LIMITS[tier as PlanTier] ?? PLAN_LIMITS.free;
+
   return [
     {
       label: "Repositories",
-      value: formatLimit(data?.usage.repos.max ?? 5),
+      value: formatLimit(limits.repos),
       helper: "tracked repositories",
       tone: "ocean",
     },
     {
       label: "Devices",
-      value: data?.accountLimits
-        ? `${data.accountLimits.devices.current} / ${formatNullableLimit(data.accountLimits.devices.limit)}`
-        : formatLimit(data?.usage.devices.max ?? 2),
+      value: formatLimit(limits.devices),
       helper: "trusted machines",
       tone: "green",
     },
     {
       label: "Storage",
-      value: formatBytes(data?.usage.storage.maxBytes ?? 500 * 1024 * 1024),
+      value: formatBytes(limits.storageTotalBytes),
       helper: "private relay storage",
       tone: "violet",
     },
     {
       label: "History",
-      value: data?.accountLimits
-        ? formatRetentionDays(data.accountLimits.retention_days)
-        : `${data?.usage.historyDays ?? 7} days`,
+      value: `${limits.historyDays} days`,
       helper: "sync history retention",
       tone: "amber",
     },
@@ -1027,14 +1456,6 @@ function buildBillingLimits(data: DashboardData | null): BillingLimit[] {
 
 function formatLimit(value: number | "unlimited") {
   return value === "unlimited" ? "Unlimited" : String(value);
-}
-
-function formatNullableLimit(value: number | null) {
-  return value === null ? "Unlimited" : String(value);
-}
-
-function formatRetentionDays(value: number | null) {
-  return value === null ? "Unlimited" : `${value} days`;
 }
 
 function formatBytes(bytes: number) {
