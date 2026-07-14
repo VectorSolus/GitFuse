@@ -8,6 +8,41 @@
       "when": 1779866807446,
       "tag": "0000_little_layla_miller",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781249026000,
+      "tag": "0001_email_verification_otps",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781339301000,
+      "tag": "0002_user_password_hash",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1781501833000,
+      "tag": "0003_razorpay_subscription_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1781757441000,
+      "tag": "0004_sync_event_commits",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782275052000,
+      "tag": "0005_account_device_tiers",
+      "breakpoints": true
     }
   ]
 }

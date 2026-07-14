@@ -24,16 +24,44 @@ export const users = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     githubId: text("github_id").notNull(),
     githubUsername: text("github_username").notNull(),
+    displayName: text("display_name"),
     email: text("email").notNull(),
+    // Deprecated: billing tier is canonical on plans.tier/plans.requested_tier.
     tier: accountTier("tier").notNull().default("free"),
+    // Deprecated with users.tier; retained temporarily for live-schema stability.
     tierUpdatedAt: timestamp("tier_updated_at", { withTimezone: true }).notNull().defaultNow(),
     emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     passwordHash: text("password_hash"),
+    pairingPinHash: text("pairing_pin_hash"),
+    pairingPinEncrypted: text("pairing_pin_encrypted"),
+    pairingPinUpdatedAt: timestamp("pairing_pin_updated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
   (table) => ({
     githubIdUnique: unique("users_github_id_unique").on(table.githubId)
+  })
+);
+
+export const oauthAccounts = pgTable(
+  "oauth_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    email: text("email"),
+    displayName: text("display_name"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    userIdIdx: index("oauth_accounts_user_id_idx").on(table.userId),
+    providerAccountUnique: unique("oauth_accounts_provider_account_unique").on(
+      table.provider,
+      table.providerAccountId
+    ),
+    userProviderUnique: unique("oauth_accounts_user_provider_unique").on(table.userId, table.provider)
   })
 );
 
@@ -201,5 +229,23 @@ export const emailVerificationOtps = pgTable(
   (table) => ({
     emailPurposeIdx: index("email_verification_otps_email_purpose_idx").on(table.email, table.purpose),
     userIdIdx: index("email_verification_otps_user_id_idx").on(table.userId)
+  })
+);
+
+export const pairingAttempts = pgTable(
+  "pairing_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    emailAttempted: text("email_attempted").notNull(),
+    ipAddress: text("ip_address").notNull(),
+    deviceName: text("device_name"),
+    success: boolean("success").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    emailCreatedIdx: index("pairing_attempts_email_created_idx").on(table.emailAttempted, table.createdAt),
+    ipCreatedIdx: index("pairing_attempts_ip_created_idx").on(table.ipAddress, table.createdAt),
+    userCreatedIdx: index("pairing_attempts_user_created_idx").on(table.userId, table.createdAt)
   })
 );
