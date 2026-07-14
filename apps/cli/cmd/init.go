@@ -3,8 +3,10 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gitfuse/gitfuse/apps/cli/internal/platform"
 	gogit "github.com/go-git/go-git/v5"
@@ -24,11 +26,15 @@ type initOptions struct {
 var initOpts initOptions
 
 var initCmd = &cobra.Command{
-	Use:   "init <Name>",
+	Use:   "init [name]",
 	Short: "Initialize git, create a platform remote, and register with gitfuse",
-	Args:  cobra.ExactArgs(1),
+	Example: "" +
+		"  gitfuse init\n" +
+		"  gitfuse init my-project\n" +
+		"  gitfuse init my-project --private --github",
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runInit(cmd, initOpts, args[0])
+		return runInit(cmd, initOpts, args)
 	},
 }
 
@@ -41,7 +47,7 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 }
 
-func runInit(cmd *cobra.Command, opts initOptions, name string) error {
+func runInit(cmd *cobra.Command, opts initOptions, args []string) error {
 	if opts.public && opts.private {
 		return fmt.Errorf("choose only one of --public or --private")
 	}
@@ -50,6 +56,14 @@ func runInit(cmd *cobra.Command, opts initOptions, name string) error {
 		return err
 	}
 	repoPath, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	nameArg := ""
+	if len(args) > 0 {
+		nameArg = args[0]
+	}
+	name, err := resolveInitRepositoryName(repoPath, nameArg)
 	if err != nil {
 		return err
 	}
@@ -78,6 +92,55 @@ func runInit(cmd *cobra.Command, opts initOptions, name string) error {
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Initialized %s %s repository %s.\n", remote.Visibility, remote.Provider, remote.CloneURL)
 	return nil
+}
+
+func resolveInitRepositoryName(repoPath, arg string) (string, error) {
+	name := arg
+	if strings.TrimSpace(name) == "" {
+		name = filepath.Base(filepath.Clean(repoPath))
+	}
+	return normalizeInitRepositoryName(name)
+}
+
+func normalizeInitRepositoryName(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", fmt.Errorf("repository name is required")
+	}
+
+	var builder strings.Builder
+	lastDash := false
+	for _, r := range trimmed {
+		switch {
+		case isInitRepositoryNameRune(r):
+			builder.WriteRune(r)
+			lastDash = false
+		case r == '-' || unicode.IsSpace(r):
+			if !lastDash {
+				builder.WriteByte('-')
+				lastDash = true
+			}
+		default:
+			return "", fmt.Errorf("invalid repository name %q: use letters, numbers, '.', '_' or '-'", trimmed)
+		}
+	}
+
+	name := strings.Trim(builder.String(), "-")
+	if name == "" || name == "." || name == ".." || strings.Trim(name, "._-") == "" {
+		return "", fmt.Errorf("invalid repository name %q: use letters, numbers, '.', '_' or '-'", trimmed)
+	}
+	if len(name) > 100 {
+		return "", fmt.Errorf("invalid repository name %q: must be 100 characters or fewer", trimmed)
+	}
+	return name, nil
+}
+
+func isInitRepositoryNameRune(r rune) bool {
+	return (r >= 'a' && r <= 'z') ||
+		(r >= 'A' && r <= 'Z') ||
+		(r >= '0' && r <= '9') ||
+		r == '.' ||
+		r == '_'
 }
 
 func selectedProvider(opts initOptions) (string, error) {

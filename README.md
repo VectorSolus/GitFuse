@@ -68,7 +68,8 @@ gitfuse auth login                  # Register this device (browser or --headles
 gitfuse auth whoami                 # Show the authenticated account and device
 gitfuse auth logout                 # Remove the local session
 gitfuse add .                       # Add current repo to workspace
-gitfuse init "project" --public     # git init + create GitHub repo + link + sync
+gitfuse init                        # git init + create GitHub repo from current dir + link + sync
+gitfuse init "project" --public     # Same flow with an explicit remote repo name
 
 # Sync
 gitfuse sync                        # Upload commits to relay

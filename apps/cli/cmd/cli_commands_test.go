@@ -15,19 +15,37 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func TestConfigDirDoesNotCreateDirectory(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "fresh config")
-	t.Setenv("GITFUSE_CONFIG_DIR", dir)
+func TestReadOnlyCommandsDoNotCreateConfigDirectory(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "help", args: []string{"--help"}, want: "gitfuse syncs committed git objects"},
+		{name: "version", args: []string{"version"}, want: "gitfuse"},
+		{name: "config-dir", args: []string{"config-dir"}, want: "CONFIG_DIR"},
+	}
 
-	output, err := executeRootCommand(t, "config-dir")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.TrimSpace(output) != dir {
-		t.Fatalf("config-dir output = %q, want %q", output, dir)
-	}
-	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Fatalf("config dir was created: err=%v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "fresh config")
+			t.Setenv("GITFUSE_CONFIG_DIR", dir)
+
+			output, err := executeRootCommand(t, tc.args...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := tc.want
+			if want == "CONFIG_DIR" {
+				want = dir
+			}
+			if !strings.Contains(output, want) {
+				t.Fatalf("%v output = %q, want to contain %q", tc.args, output, want)
+			}
+			if _, err := os.Stat(dir); !os.IsNotExist(err) {
+				t.Fatalf("config dir was created by %v: err=%v", tc.args, err)
+			}
+		})
 	}
 }
 
