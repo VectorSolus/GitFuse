@@ -2,7 +2,11 @@ import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 
 import { getSql } from "./db";
 
-export type OtpPurpose = "add_email" | "delete_account" | "sign_in_email";
+export type OtpPurpose =
+  | "add_email"
+  | "delete_account"
+  | "sign_in_email"
+  | "pairing_pin_reveal";
 
 type OtpResult =
   | { ok: true }
@@ -80,7 +84,9 @@ export async function sendOtpEmail(email: string, code: string, purpose: OtpPurp
       ? "confirm deleting your GitFuse account"
       : purpose === "add_email"
         ? "verify this email for your GitFuse account"
-        : "finish signing in to GitFuse";
+        : purpose === "pairing_pin_reveal"
+          ? "reveal your GitFuse pairing PIN"
+          : "finish signing in to GitFuse";
 
   await sendTransactionalEmail({
     to: normalizeEmail(email),

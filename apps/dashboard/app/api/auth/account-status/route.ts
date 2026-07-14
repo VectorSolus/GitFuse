@@ -28,6 +28,7 @@ export async function POST(request: Request) {
       ok: true,
       exists: Boolean(user),
       hasPassword: Boolean(user?.password_hash),
+      emailVerified: Boolean(user?.email_verified_at),
     });
   } catch (error) {
     console.error("[account-status]", error);

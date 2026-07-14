@@ -34,9 +34,21 @@ if (!authSecret) {
 function authUser(user: DashboardAccount) {
   return {
     id: user.id,
-    name: user.github_username,
+    name: user.display_name,
     email: user.email,
   };
+}
+
+async function authDatabaseOperation<T>(
+  context: string,
+  operation: () => Promise<T>,
+) {
+  try {
+    return await operation();
+  } catch (error) {
+    console.error(`[auth:${context}] database operation failed`, error);
+    throw error;
+  }
 }
 
 function profileValue(
@@ -87,11 +99,14 @@ const providers = [
       otpCode: { label: "OTP code", type: "text" },
     },
     async authorize(credentials) {
-      const user = await authorizeEmailPassword({
-        email: String(credentials?.email ?? ""),
-        password: String(credentials?.password ?? ""),
-        otp: String(credentials?.otpCode ?? credentials?.otp ?? ""),
-      });
+      const user = await authDatabaseOperation(
+        "credentials-authorize",
+        () => authorizeEmailPassword({
+          email: String(credentials?.email ?? ""),
+          password: String(credentials?.password ?? ""),
+          otp: String(credentials?.otpCode ?? credentials?.otp ?? ""),
+        }),
+      );
 
       return user ? authUser(user) : null;
     },
@@ -113,10 +128,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async signIn({ account, profile, user }) {
       if (account?.provider === "credentials") {
-        return Boolean(
-          user?.id &&
-          user.email &&
-          (await findDashboardAccountById(user.id)),
+        return authDatabaseOperation(
+          "credentials-sign-in",
+          async () => Boolean(
+            user?.id &&
+            user.email &&
+            (await findDashboardAccountById(user.id)),
+          ),
         );
       }
 
@@ -154,46 +172,59 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return false;
       }
 
-      const existingUser =
-        (await findDashboardAccountByProviderIdentity(
+      return authDatabaseOperation("oauth-sign-in", async () => {
+        const existingUser =
+          (await findDashboardAccountByProviderIdentity(
+            provider,
+            providerAccountId,
+          )) ?? (await findDashboardAccountByEmail(email));
+
+        await upsertDashboardAccount({
           provider,
           providerAccountId,
-        )) ?? (await findDashboardAccountByEmail(email));
+          username,
+          email,
+          emailVerifiedAt: oauthEmailVerifiedAt({
+            provider,
+            account: existingUser,
+          }),
+        });
 
-      await upsertDashboardAccount({
-        provider,
-        providerAccountId,
-        username,
-        email,
-        emailVerifiedAt: oauthEmailVerifiedAt({
-          provider,
-          account: existingUser,
-        }),
+        return oauthSuccessfulSignInResult();
       });
-
-      return oauthSuccessfulSignInResult();
     },
 
     async jwt({ token, user, account }) {
-      let databaseUser: DashboardAccount | null = null;
+      const databaseUser = await authDatabaseOperation(
+        "jwt",
+        async (): Promise<DashboardAccount | null> => {
+          if (
+            account?.provider === "google" ||
+            account?.provider === "github"
+          ) {
+            const providerAccount = await findDashboardAccountByProviderIdentity(
+              account.provider,
+              account.providerAccountId,
+            );
 
-      if (
-        account?.provider === "google" ||
-        account?.provider === "github"
-      ) {
-        databaseUser = await findDashboardAccountByProviderIdentity(
-          account.provider,
-          account.providerAccountId,
-        );
+            if (!providerAccount && user.email) {
+              return findDashboardAccountByEmail(user.email);
+            }
 
-        if (!databaseUser && user.email) {
-          databaseUser = await findDashboardAccountByEmail(user.email);
+            return providerAccount;
+          }
+
+          if (user?.id) {
+            return findDashboardAccountById(user.id);
+          }
+
+          if (token.sub) {
+            return findDashboardAccountById(token.sub);
+          }
+
+          return null;
         }
-      } else if (user?.id) {
-        databaseUser = await findDashboardAccountById(user.id);
-      } else if (token.sub) {
-        databaseUser = await findDashboardAccountById(token.sub);
-      }
+      );
 
       if (!databaseUser) {
         token.invalid = true;
@@ -202,7 +233,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       token.sub = databaseUser.id;
-      token.name = databaseUser.github_username;
+      token.name = databaseUser.display_name;
       token.email = databaseUser.email;
       delete token.invalid;
       delete token.error;

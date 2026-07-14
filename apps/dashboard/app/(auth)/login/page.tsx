@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
-import { ArrowRight, Mail, ShieldCheck } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Mail, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ClipboardEvent,
@@ -21,6 +21,7 @@ type OAuthProvider = "google" | "github";
 type AccountStatus = {
   exists: boolean;
   hasPassword: boolean;
+  emailVerified: boolean;
 };
 
 export default function LoginPage() {
@@ -28,6 +29,7 @@ export default function LoginPage() {
   const [step, setStep] = useState<LoginStep>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [otpDigits, setOtpDigits] = useState(Array<string>(6).fill(""));
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -127,6 +129,7 @@ export default function LoginPage() {
       message?: string;
       exists?: boolean;
       hasPassword?: boolean;
+      emailVerified?: boolean;
     };
 
     if (!response.ok) {
@@ -138,6 +141,7 @@ export default function LoginPage() {
     return {
       exists: Boolean(result.exists),
       hasPassword: Boolean(result.hasPassword),
+      emailVerified: Boolean(result.emailVerified),
     };
   }
 
@@ -181,7 +185,7 @@ export default function LoginPage() {
           accountStatus ?? (await loadAccountStatus(trimmedEmail));
         setAccountStatus(currentStatus);
 
-        if (currentStatus.hasPassword) {
+        if (currentStatus.hasPassword && currentStatus.emailVerified) {
           const signInResponse = await signIn("credentials", {
             email: trimmedEmail,
             password,
@@ -226,7 +230,11 @@ export default function LoginPage() {
         }
 
         if (result.next === "password_signin_available") {
-          setAccountStatus({ exists: true, hasPassword: true });
+          setAccountStatus({
+            exists: true,
+            hasPassword: true,
+            emailVerified: true,
+          });
           setFeedback("Invalid email or password.");
           return;
         }
@@ -532,20 +540,31 @@ export default function LoginPage() {
                   </label>
 
                   <div className="gf-password-row">
-                    <input
-                      id="password"
-                      type="password"
-                      placeholder="Minimum 8 characters"
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      autoComplete={
-                        accountStatus?.hasPassword
-                          ? "current-password"
-                          : "new-password"
-                      }
-                      minLength={8}
-                      required
-                    />
+                    <div className="gf-password-input-wrap">
+                      <input
+                        id="password"
+                        type={passwordVisible ? "text" : "password"}
+                        placeholder="Minimum 8 characters"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        autoComplete={
+                          accountStatus?.hasPassword
+                            ? "current-password"
+                            : "new-password"
+                        }
+                        minLength={8}
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="gf-secret-toggle"
+                        onClick={() => setPasswordVisible((current) => !current)}
+                        aria-label={passwordVisible ? "Hide password" : "Show password"}
+                        title={passwordVisible ? "Hide password" : "Show password"}
+                      >
+                        {passwordVisible ? <EyeOff size={17} /> : <Eye size={17} />}
+                      </button>
+                    </div>
 
                     <button
                       type="submit"
