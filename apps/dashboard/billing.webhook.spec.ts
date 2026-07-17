@@ -1,10 +1,11 @@
+import "./test/env";
+
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { getSql } from "./lib/db";
 import { syncRazorpaySubscriptionEvent } from "./lib/billing";
 
-process.env.DATABASE_URL ??= "postgresql://localhost:5432/gitfuse_db";
-process.env.RAZORPAY_PRO_PLAN_ID ??= "plan_test_pro";
+process.env.RAZORPAY_PRO_PLAN_ID = "plan_test_pro";
 
 const userIds: string[] = [];
 const proPlanId = process.env.RAZORPAY_PRO_PLAN_ID;

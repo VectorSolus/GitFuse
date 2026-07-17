@@ -1,12 +1,8 @@
+import "./test/env";
+
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.hoisted(() => {
-  process.env.DATABASE_URL ??= "postgresql://localhost:5432/gitfuse_db";
-  process.env.AUTH_SECRET ??= "test-auth-secret";
-  process.env.PAIRING_PIN_ENCRYPTION_KEY ??= "0123456789abcdef0123456789abcdef";
-});
 
 import { getSql } from "./lib/db";
 import { createOtp } from "./lib/otp";

@@ -1,3 +1,5 @@
+import "./test/env";
+
 import { describe, expect, it } from "vitest";
 import { GET } from "./app/api/billing/price/route";
 
@@ -14,17 +16,32 @@ async function price(country: string, tier = "pro") {
 
 describe("billing price route", () => {
   it("resolves INR pricing for India", async () => {
-    await expect(price("IN")).resolves.toEqual({
+    const result = await price("IN");
+
+    expect(result).toEqual({
       country: "IN",
       tier: "pro",
       amount: 749,
       currency: "INR",
     });
+    expect(result.country).not.toBe("default");
   });
 
   it("resolves USD pricing for the US", async () => {
-    await expect(price("US")).resolves.toEqual({
+    const result = await price("US");
+
+    expect(result).toEqual({
       country: "US",
+      tier: "pro",
+      amount: 9,
+      currency: "USD",
+    });
+    expect(result.country).not.toBe("default");
+  });
+
+  it("documents the default USD fallback for unknown countries", async () => {
+    await expect(price("ZZ")).resolves.toEqual({
+      country: "default",
       tier: "pro",
       amount: 9,
       currency: "USD",

@@ -1,3 +1,5 @@
+import "./test/env";
+
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { deleteDashboardAccountWithOtp } from "./lib/account-delete";
@@ -8,9 +10,6 @@ import {
 } from "./lib/auth-email";
 import { getSql } from "./lib/db";
 import { createOtp } from "./lib/otp";
-
-process.env.DATABASE_URL ??= "postgresql://localhost:5432/gitfuse_db";
-process.env.AUTH_SECRET ??= "test-auth-secret";
 
 const testEmails = [
   "auth-signup@example.com",
