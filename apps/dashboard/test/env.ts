@@ -24,26 +24,29 @@ export function dashboardTestDatabaseUrl() {
 export function installDashboardTestEnv(
   overrides: Record<string, string | undefined> = {},
 ): NodeJS.ProcessEnv {
-  process.env.DATABASE_URL =
+  const env = process.env as Record<string, string | undefined>;
+
+  env.NODE_ENV = overrides.NODE_ENV ?? "test";
+  env.DATABASE_URL =
     overrides.DATABASE_URL ?? dashboardTestDatabaseUrl();
-  process.env.AUTH_SECRET = overrides.AUTH_SECRET ?? "test-auth-secret";
-  process.env.NEXTAUTH_SECRET =
+  env.AUTH_SECRET = overrides.AUTH_SECRET ?? "test-auth-secret";
+  env.NEXTAUTH_SECRET =
     overrides.NEXTAUTH_SECRET ?? "test-nextauth-secret";
-  process.env.AUTH_URL = overrides.AUTH_URL ?? defaultLocalAppUrl;
-  process.env.NEXTAUTH_URL = overrides.NEXTAUTH_URL ?? defaultLocalAppUrl;
-  process.env.NEXT_PUBLIC_APP_URL =
+  env.AUTH_URL = overrides.AUTH_URL ?? defaultLocalAppUrl;
+  env.NEXTAUTH_URL = overrides.NEXTAUTH_URL ?? defaultLocalAppUrl;
+  env.NEXT_PUBLIC_APP_URL =
     overrides.NEXT_PUBLIC_APP_URL ?? defaultLocalAppUrl;
-  process.env.PAIRING_PIN_ENCRYPTION_KEY =
+  env.PAIRING_PIN_ENCRYPTION_KEY =
     overrides.PAIRING_PIN_ENCRYPTION_KEY ??
     "0123456789abcdef0123456789abcdef";
 
   for (const name of clearedEnvNames) {
-    delete process.env[name];
+    delete env[name];
   }
 
   for (const [name, value] of Object.entries(overrides)) {
     if (value === undefined) continue;
-    process.env[name] = value;
+    env[name] = value;
   }
 
   return process.env;

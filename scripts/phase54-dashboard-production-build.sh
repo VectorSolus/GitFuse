@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT="/Users/piyush/Desktop/GitFuse"
 DASHBOARD_DIR="$ROOT/apps/dashboard"
-TEST_DATABASE_URL_VALUE="${TEST_DATABASE_URL:-postgresql://localhost:5432/gitfuse_db}"
 
 TARGETED_TESTS=(
   "auth.callbacks.test.ts"
@@ -82,8 +81,6 @@ run_test_env() {
   env \
     "NODE_ENV=test" \
     "NEXT_TELEMETRY_DISABLED=1" \
-    "TEST_DATABASE_URL=$TEST_DATABASE_URL_VALUE" \
-    "DATABASE_URL=$TEST_DATABASE_URL_VALUE" \
     "AUTH_SECRET=phase54-test-auth-secret" \
     "NEXTAUTH_SECRET=phase54-test-nextauth-secret" \
     "AUTH_URL=http://localhost:3000" \
@@ -101,6 +98,25 @@ run_test_env() {
     "RAZORPAY_TEAM_PLAN_ID=" \
     "NEXT_PUBLIC_RAZORPAY_KEY_ID=" \
     "$@"
+}
+
+run_contaminated_targeted_tests() {
+  env \
+    "DATABASE_URL=postgresql://gitfuse_build:gitfuse_build@db.internal:5432/gitfuse_build" \
+    "AUTH_URL=https://dashboard.gitfuse.dev" \
+    "NEXTAUTH_URL=https://dashboard.gitfuse.dev" \
+    "NEXT_PUBLIC_APP_URL=https://dashboard.gitfuse.dev" \
+    pnpm --dir "$DASHBOARD_DIR" exec vitest run "${TARGETED_TESTS[@]}"
+}
+
+run_production_node_env_price_guard() {
+  env \
+    "NODE_ENV=production" \
+    "DATABASE_URL=postgresql://gitfuse_build:gitfuse_build@db.internal:5432/gitfuse_build" \
+    "AUTH_URL=https://dashboard.gitfuse.dev" \
+    "NEXTAUTH_URL=https://dashboard.gitfuse.dev" \
+    "NEXT_PUBLIC_APP_URL=https://dashboard.gitfuse.dev" \
+    pnpm --dir "$DASHBOARD_DIR" exec vitest run "billing.price.spec.ts"
 }
 
 run_prod_env() {
@@ -398,8 +414,11 @@ main() {
   log "running dashboard typecheck under local test env"
   run_test_env pnpm --dir "$DASHBOARD_DIR" exec tsc --noEmit
 
-  log "running targeted dashboard tests under local test env"
-  run_test_env pnpm --dir "$DASHBOARD_DIR" exec vitest run "${TARGETED_TESTS[@]}"
+  log "running targeted dashboard tests under contaminated production-like parent env"
+  run_contaminated_targeted_tests
+
+  log "running billing price guard with NODE_ENV=production contamination"
+  run_production_node_env_price_guard
 
   PHASE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/gitfuse-phase54-dashboard.XXXXXX")"
   PROD_WORKTREE="$PHASE_TMP/worktree"
