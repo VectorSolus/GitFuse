@@ -431,8 +431,8 @@ main() {
   fi
   log "confirmed apps/dashboard/.env.local is absent from the production worktree"
 
-  log "installing production worktree dependencies with pnpm offline/frozen"
-  pnpm --dir "$PROD_WORKTREE" install --offline --frozen-lockfile
+  log "installing production worktree dependencies with build-time devDependencies"
+  env NODE_ENV=development pnpm --dir "$PROD_WORKTREE" install --offline --frozen-lockfile --prod=false
 
   log "building dashboard with explicit production-like env"
   run_prod_env pnpm --dir "$PROD_WORKTREE/apps/dashboard" exec next build
