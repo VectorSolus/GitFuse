@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import type { CreateRepoRequest } from "@gitfuse/types/relay";
-import type { AuthenticatedDevice } from "../db/queries";
-import { checkRepoLimit, createRepo, deleteRepo, listRepos } from "../db/queries";
-import { badRequest, notFound, overLimit } from "../errors/responses";
+import type { AuthenticatedDevice } from "../db/queries.js";
+import { checkRepoLimit, createRepo, deleteRepo, listRepos } from "../db/queries.js";
+import { badRequest, notFound, overLimit } from "../errors/responses.js";
 
 type Variables = {
   auth: AuthenticatedDevice;

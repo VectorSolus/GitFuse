@@ -1,23 +1,23 @@
-import { assertRelayDatabaseConfiguration } from "./env";
+import { assertRelayDatabaseConfiguration } from "./env.js";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { cleanupExpiredBundles } from "./cleanup";
-import type { AuthenticatedDevice } from "./db/queries";
+import { cleanupExpiredBundles } from "./cleanup.js";
+import type { AuthenticatedDevice } from "./db/queries.js";
 import {
   authenticateToken,
   getUsage,
   listBundleStatusSummary,
   seedCleanupScenario,
   seedLimitScenario
-} from "./db/queries";
-import { checkRelayDatabaseReady } from "./db/postgres";
-import { sessionExpired } from "./errors/responses";
-import { accountRoutes } from "./routes/account";
-import { authRoutes } from "./routes/auth";
-import { bundleRoutes } from "./routes/bundles";
-import { deviceRoutes } from "./routes/devices";
-import { repoRoutes } from "./routes/repos";
-import { listBundleObjectKeys, putBundleObject } from "./storage/r2";
+} from "./db/queries.js";
+import { checkRelayDatabaseReady } from "./db/postgres.js";
+import { sessionExpired } from "./errors/responses.js";
+import { accountRoutes } from "./routes/account.js";
+import { authRoutes } from "./routes/auth.js";
+import { bundleRoutes } from "./routes/bundles.js";
+import { deviceRoutes } from "./routes/devices.js";
+import { repoRoutes } from "./routes/repos.js";
+import { listBundleObjectKeys, putBundleObject } from "./storage/r2.js";
 
 type Variables = {
   auth: AuthenticatedDevice;

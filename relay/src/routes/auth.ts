@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { ApproveAuthRequest, RegisterDeviceRequest } from "@gitfuse/types/relay";
-import { approveAuthSession, checkDeviceLimitForApproval, createAuthSession, findAuthSessionForApproval, pollAuthSession } from "../db/queries";
-import { badRequest, deviceLimitReached, notFound } from "../errors/responses";
+import { approveAuthSession, checkDeviceLimitForApproval, createAuthSession, findAuthSessionForApproval, pollAuthSession } from "../db/queries.js";
+import { badRequest, deviceLimitReached, notFound } from "../errors/responses.js";
 
 export const authRoutes = new Hono();
 

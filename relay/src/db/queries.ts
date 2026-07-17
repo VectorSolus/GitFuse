@@ -20,14 +20,14 @@ import {
   type LimitName,
   type PlanTier,
   type UsageSummary
-} from "@gitfuse/types/billing";
+} from "../billing-runtime.js";
 import {
   ensureRelayDatabaseUser,
   findRelayDatabaseUserById,
   findRelayDatabaseUserByIdentity,
   getRelaySql,
   relayDatabaseConfigured
-} from "./postgres";
+} from "./postgres.js";
 
 export type AuthenticatedDevice = {
   tokenHash: string;

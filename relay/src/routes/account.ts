@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import type { AuthenticatedDevice } from "../db/queries";
-import { getAccountLimits } from "../db/queries";
+import type { AuthenticatedDevice } from "../db/queries.js";
+import { getAccountLimits } from "../db/queries.js";
 
 type Variables = {
   auth: AuthenticatedDevice;

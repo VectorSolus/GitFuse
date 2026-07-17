@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import type { AuthenticatedDevice } from "../db/queries";
-import { listDevices, revokeDevice } from "../db/queries";
-import { notFound } from "../errors/responses";
+import type { AuthenticatedDevice } from "../db/queries.js";
+import { listDevices, revokeDevice } from "../db/queries.js";
+import { notFound } from "../errors/responses.js";
 
 type Variables = {
   auth: AuthenticatedDevice;

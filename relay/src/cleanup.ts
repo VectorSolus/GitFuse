@@ -1,5 +1,5 @@
-import { bundleAccountId, expireBundle, findExpiredFreeBundles } from "./db/queries";
-import { deleteBundleObject } from "./storage/r2";
+import { bundleAccountId, expireBundle, findExpiredFreeBundles } from "./db/queries.js";
+import { deleteBundleObject } from "./storage/r2.js";
 
 export async function cleanupExpiredBundles(options: { now?: Date; dryRun?: boolean } = {}) {
   const now = options.now ?? new Date();

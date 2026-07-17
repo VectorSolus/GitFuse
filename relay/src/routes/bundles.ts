@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import type { SyncedCommit } from "@gitfuse/types/relay";
-import type { AuthenticatedDevice } from "../db/queries";
+import type { AuthenticatedDevice } from "../db/queries.js";
 import {
   bundleAccountId,
   checkBundleUploadLimits,
@@ -11,9 +11,9 @@ import {
   getUsage,
   listBundles,
   updateBundleStatus
-} from "../db/queries";
-import { deleteBundleObject, getBundleObject, putBundleObject } from "../storage/r2";
-import { badRequest, conflict, notFound, overLimit } from "../errors/responses";
+} from "../db/queries.js";
+import { deleteBundleObject, getBundleObject, putBundleObject } from "../storage/r2.js";
+import { badRequest, conflict, notFound, overLimit } from "../errors/responses.js";
 
 type Variables = {
   auth: AuthenticatedDevice;

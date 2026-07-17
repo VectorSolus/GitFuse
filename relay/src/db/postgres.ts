@@ -1,7 +1,7 @@
 import {
   effectivePlanTier,
   type PlanTier,
-} from "@gitfuse/types/billing";
+} from "../billing-runtime.js";
 import postgres from "postgres";
 
 type RelayDatabaseUser = {
