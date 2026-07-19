@@ -5317,6 +5317,11 @@ select {
 }
 
 .gf-history-day-details {
+  --gf-history-card-width: 300px;
+  --gf-history-card-height: 200px;
+  --gf-history-card-padding: 20px;
+  --gf-history-carousel-height: 220px;
+
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -5326,12 +5331,15 @@ select {
 
 .gf-history-commit-carousel {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 0 var(--gf-history-carousel-height);
+  align-items: flex-start;
   gap: 16px;
+  height: var(--gf-history-carousel-height);
+  max-height: 252px;
   min-height: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0.15rem 0.1rem 0.65rem;
+  padding: 0.1rem 0.1rem 0.75rem;
   scroll-behavior: smooth;
   scroll-snap-type: x proximity;
   scrollbar-width: none;
@@ -5348,14 +5356,15 @@ select {
 }
 
 .gf-history-repo-card {
-  flex: 0 0 min(380px, calc(100% - 0.25rem));
-  width: min(380px, calc(100% - 0.25rem));
-  min-height: 220px;
-  max-height: 100%;
+  flex: 0 0 min(var(--gf-history-card-width), calc(100% - 0.25rem));
+  width: min(var(--gf-history-card-width), calc(100% - 0.25rem));
+  height: var(--gf-history-card-height);
+  min-height: var(--gf-history-card-height);
+  max-height: var(--gf-history-card-height);
   border: 1px solid rgba(125, 211, 252, 0.12);
   border-radius: 1.15rem;
   background: rgba(2, 8, 23, 0.42);
-  padding: 1rem;
+  padding: var(--gf-history-card-padding);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -5369,8 +5378,8 @@ select {
   justify-content: space-between;
   gap: 1rem;
   border-bottom: 1px solid rgba(125, 211, 252, 0.1);
-  padding-bottom: 0.85rem;
-  margin-bottom: 0.85rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
 }
 
 .gf-history-repo-head > div {
@@ -5416,8 +5425,9 @@ select {
 
 .gf-history-commit-list {
   display: grid;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   gap: 0.65rem;
+  align-content: start;
   min-height: 0;
   overflow: hidden;
 }
@@ -5545,6 +5555,23 @@ select {
   margin: 0;
   color: var(--gf-muted);
   line-height: 1.7;
+}
+
+@media (min-width: 768px) {
+  .gf-history-day-details {
+    --gf-history-card-width: 340px;
+    --gf-history-card-height: 210px;
+    --gf-history-carousel-height: 232px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .gf-history-day-details {
+    --gf-history-card-width: 380px;
+    --gf-history-card-height: 220px;
+    --gf-history-card-padding: 24px;
+    --gf-history-carousel-height: 240px;
+  }
 }
 
 @media (max-width: 1180px) {
@@ -6119,11 +6146,6 @@ select {
 
   .gf-history-graph-panel {
     padding: 1.15rem;
-  }
-
-  .gf-history-repo-card {
-    flex-basis: min(340px, calc(100% - 0.25rem));
-    width: min(340px, calc(100% - 0.25rem));
   }
 
   .gf-history-month-row {
