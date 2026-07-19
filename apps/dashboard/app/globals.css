@@ -5077,8 +5077,11 @@ select {
 .gf-history-detail-panel {
   display: flex;
   flex-direction: column;
-  height: clamp(32rem, calc(100vh - 8rem), 42rem);
+  align-self: start;
+  height: auto;
   min-height: 0;
+  max-height: none;
+  padding: 1.5rem;
 }
 
 .gf-history-panel-header {
@@ -5323,7 +5326,7 @@ select {
   --gf-history-carousel-height: 220px;
 
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 1rem;
   min-height: 0;
@@ -5479,20 +5482,23 @@ select {
   display: flex;
   flex: 0 0 auto;
   justify-content: flex-end;
-  gap: 0.55rem;
+  gap: 0.75rem;
 }
 
-.gf-history-carousel-controls button {
-  width: 38px;
-  height: 38px;
+.gf-history-carousel-button {
+  width: 40px;
+  height: 40px;
   border: 1px solid rgba(125, 211, 252, 0.18);
   border-radius: 999px;
   background: rgba(18, 184, 222, 0.08);
   color: #7dd3fc;
   cursor: pointer;
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
+  line-height: 1;
+  padding: 0;
   transition:
     background 160ms ease,
     border-color 160ms ease,
@@ -5500,20 +5506,23 @@ select {
     opacity 160ms ease;
 }
 
-.gf-history-carousel-controls button:hover:not(:disabled),
-.gf-history-carousel-controls button:focus-visible:not(:disabled) {
+.gf-history-carousel-button:hover:not(:disabled),
+.gf-history-carousel-button:focus-visible:not(:disabled) {
   border-color: rgba(125, 211, 252, 0.42);
   background: rgba(18, 184, 222, 0.16);
   color: white;
   outline: none;
 }
 
-.gf-history-carousel-controls button:disabled {
+.gf-history-carousel-button:disabled {
+  background: rgba(18, 184, 222, 0.06);
   cursor: not-allowed;
   opacity: 0.42;
 }
 
-.gf-history-carousel-controls svg {
+.gf-history-carousel-button svg {
+  display: block;
+  flex: 0 0 18px;
   width: 18px;
   height: 18px;
 }
@@ -5566,6 +5575,10 @@ select {
 }
 
 @media (min-width: 1280px) {
+  .gf-history-detail-panel {
+    padding: 1.65rem;
+  }
+
   .gf-history-day-details {
     --gf-history-card-width: 380px;
     --gf-history-card-height: 220px;
@@ -6105,10 +6118,6 @@ select {
     grid-template-columns: 1fr;
   }
 
-  .gf-history-detail-panel {
-    height: clamp(30rem, calc(100vh - 6rem), 38rem);
-  }
-
   .gf-history-graph-panel {
     padding: 1.45rem;
   }
@@ -6140,10 +6149,6 @@ select {
 }
 
 @media (max-width: 760px) {
-  .gf-history-detail-panel {
-    height: clamp(28rem, calc(100vh - 2rem), 34rem);
-  }
-
   .gf-history-graph-panel {
     padding: 1.15rem;
   }

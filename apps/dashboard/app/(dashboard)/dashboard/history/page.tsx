@@ -317,6 +317,7 @@ export default function HistoryPage() {
               >
                 <button
                   type="button"
+                  className="gf-history-carousel-button"
                   aria-label="Scroll commits left"
                   aria-controls="history-selected-day-carousel"
                   onClick={() => scrollSelectedDayCommits("left")}
@@ -327,6 +328,7 @@ export default function HistoryPage() {
 
                 <button
                   type="button"
+                  className="gf-history-carousel-button"
                   aria-label="Scroll commits right"
                   aria-controls="history-selected-day-carousel"
                   onClick={() => scrollSelectedDayCommits("right")}
