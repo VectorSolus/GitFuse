@@ -6694,14 +6694,14 @@ body {
   height: 220px;
   min-height: 0;
   border-radius: 1.35rem;
-  padding: 1.1rem;
+  padding: 1.25rem;
   text-align: left;
   cursor: pointer;
   color: white;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 0.85rem;
+  gap: 1rem;
   transition:
     border-color 140ms ease,
     background 140ms ease,
@@ -6724,47 +6724,65 @@ body {
   outline-offset: 3px;
 }
 
-.gf-usage-metric-head {
+.gf-usage-metric-top {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  min-height: 4.85rem;
 }
 
-.gf-usage-metric-head > div {
+.gf-usage-metric-top p {
+  min-width: 0;
+  margin: 0;
+  color: #9db5c8;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.gf-usage-metric-top > span {
+  flex: 0 0 auto;
+  color: #7dd3fc;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 20px;
+}
+
+.gf-usage-metric-main {
+  display: grid;
+  gap: 1.15rem;
+}
+
+.gf-usage-metric-value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 0.18rem;
+  row-gap: 0.1rem;
   min-width: 0;
 }
 
-.gf-usage-metric-head p {
-  margin: 0;
-  color: #9db5c8;
-  font-size: 0.85rem;
-  font-weight: 850;
+.gf-usage-metric-value strong {
+  color: white;
+  font-size: 40px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
 }
 
-.gf-usage-metric-head strong {
-  display: block;
-  margin-top: 0.6rem;
-  font-size: 2.05rem;
-  line-height: 1.05;
-  letter-spacing: 0;
-  overflow-wrap: anywhere;
-}
-
-.gf-usage-metric-head small {
+.gf-usage-metric-value small {
   color: #6f8498;
-  font-size: 0.95rem;
-}
-
-.gf-usage-metric-head > span {
-  color: #7dd3fc;
-  font-size: 0.85rem;
-  font-weight: 950;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateY(-0.08em);
 }
 
 .gf-usage-progress {
   flex: 0 0 auto;
-  height: 0.8rem;
+  height: 12px;
   border: 1px solid rgba(125, 211, 252, 0.14);
   border-radius: 999px;
   margin-top: 0;
@@ -6785,10 +6803,11 @@ body {
   justify-content: space-between;
   align-items: flex-end;
   gap: 1rem;
-  min-height: 2.2rem;
   margin-top: 0;
   color: var(--gf-muted);
-  font-size: 0.85rem;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 20px;
 }
 
 .gf-usage-metric-foot span {
@@ -6798,6 +6817,11 @@ body {
 .gf-usage-metric-foot code {
   color: #7dd3fc;
   font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .gf-usage-tone-green .gf-usage-progress i {
@@ -7247,6 +7271,7 @@ body {
 
   .gf-usage-metric-card {
     height: 240px;
+    padding: 1.35rem;
   }
 }
 
@@ -7258,6 +7283,19 @@ body {
 
   .gf-usage-metric-card {
     height: 280px;
+    padding: 1.5rem;
+  }
+
+  .gf-usage-metric-main {
+    gap: 1.2rem;
+  }
+
+  .gf-usage-metric-value strong {
+    font-size: 44px;
+  }
+
+  .gf-usage-metric-value small {
+    font-size: 18px;
   }
 }
 

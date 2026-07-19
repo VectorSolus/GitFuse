@@ -98,23 +98,23 @@ export default function UsagePage() {
                   Click for more details
                 </span>
 
-                <div className="gf-usage-metric-head">
-                  <div>
-                    <p>{metric.label}</p>
-                    <strong>
-                      {metric.displayValue ?? metric.value}
-                      <small>/{metric.displayLimit ?? metric.limit}</small>
-                    </strong>
-                  </div>
-
+                <div className="gf-usage-metric-top">
+                  <p>{metric.label}</p>
                   <span>{percentLabel}</span>
                 </div>
 
-                <div
-                  className="gf-usage-progress"
-                  aria-label={`${metric.label} usage ${percent}%`}
-                >
-                  <i style={{ width: `${clampPercent(percent)}%` }} />
+                <div className="gf-usage-metric-main">
+                  <div className="gf-usage-metric-value">
+                    <strong>{metric.displayValue ?? metric.value}</strong>
+                    <small>/{metric.displayLimit ?? metric.limit}</small>
+                  </div>
+
+                  <div
+                    className="gf-usage-progress"
+                    aria-label={`${metric.label} usage ${percent}%`}
+                  >
+                    <i style={{ width: `${clampPercent(percent)}%` }} />
+                  </div>
                 </div>
 
                 <div className="gf-usage-metric-foot">
