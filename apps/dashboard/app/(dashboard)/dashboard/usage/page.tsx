@@ -1,7 +1,7 @@
 "use client";
 
 import { PLAN_LIMITS } from "@gitfuse/types/billing";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DashboardDataError } from "@/components/dashboard/data-error";
 import { useDashboardData, type DashboardData } from "@/hooks/use-dashboard-data";
@@ -28,12 +28,36 @@ export default function UsagePage() {
   const [selectedMetricId, setSelectedMetricId] =
     useState<UsageMetricId>("repositories");
   const [billingOpen, setBillingOpen] = useState(false);
+  const [isDetailListScrolling, setIsDetailListScrolling] = useState(false);
+  const detailScrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const usageMetrics = useMemo(() => buildUsageMetrics(data), [data]);
   const planFeatures = useMemo(() => buildPlanFeatures(data), [data]);
 
   const selectedMetric = useMemo(() => {
     return usageMetrics.find((metric) => metric.id === selectedMetricId);
   }, [selectedMetricId, usageMetrics]);
+
+  useEffect(() => {
+    return () => {
+      if (detailScrollTimeout.current) {
+        clearTimeout(detailScrollTimeout.current);
+      }
+    };
+  }, []);
+
+  function handleDetailListScroll() {
+    if (detailScrollTimeout.current) {
+      clearTimeout(detailScrollTimeout.current);
+    }
+
+    setIsDetailListScrolling(true);
+    detailScrollTimeout.current = setTimeout(() => {
+      setIsDetailListScrolling(false);
+      detailScrollTimeout.current = null;
+    }, 900);
+  }
 
   if (error && !loading) {
     return <DashboardDataError message={error} />;
@@ -151,10 +175,13 @@ export default function UsagePage() {
                 </div>
 
                 <div
-                  className="gf-usage-detail-list-body"
+                  className={`gf-usage-detail-list-body usage-detail-scroll ${
+                    isDetailListScrolling ? "is-scrolling" : ""
+                  }`}
                   role="region"
                   aria-label={`${selectedMetric.rowsTitle} for ${selectedMetric.label}`}
                   tabIndex={0}
+                  onScroll={handleDetailListScroll}
                 >
                   {selectedMetric.rows.length > 0 ? (
                     selectedMetric.rows.map((row) => (
