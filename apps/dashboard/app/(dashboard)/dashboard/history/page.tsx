@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { DashboardDataError } from "@/components/dashboard/data-error";
 import { HistoryGridClient } from "@/components/dashboard/history-grid-client";
 import { useDashboardData, type DashboardData } from "@/hooks/use-dashboard-data";
+import {
+  formatHistoryTime,
+  formatSelectedDayCommitMetadata,
+} from "@/lib/history-card";
 import {
   buildHistoryActivityByDate,
   buildYearCalendar,
@@ -27,11 +31,9 @@ type CommitItem = {
 type RepoSyncItem = {
   id: string;
   repo: string;
-  branch: string;
   device: string;
   syncedAt: string;
   bundleSizeBytes: number;
-  direction: "sync" | "pull" | "drop" | "undo" | "rebase-sync";
   commitCount: number;
   commits: CommitItem[];
 };
@@ -41,11 +43,19 @@ type SyncDay = {
   repositories: RepoSyncItem[];
 };
 
+const COMMIT_CAROUSEL_CARD_GAP = 16;
+const MAX_VISIBLE_CARD_COMMITS = 2;
+
 export default function HistoryPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const commitCarouselRef = useRef<HTMLDivElement | null>(null);
   const [browserToday, setBrowserToday] = useState<Date | null>(null);
+  const [commitCarouselScrollState, setCommitCarouselScrollState] = useState({
+    canScrollLeft: false,
+    canScrollRight: false,
+  });
   const currentYear = browserToday?.getFullYear() ?? new Date().getFullYear();
   const queryYear = Number(searchParams.get("year"));
   const requestedYear =
@@ -108,6 +118,28 @@ export default function HistoryPage() {
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [data, pathname, requestedYear, router, searchParams]);
 
+  useEffect(() => {
+    const carousel = commitCarouselRef.current;
+    if (!carousel) {
+      setCommitCarouselScrollState({
+        canScrollLeft: false,
+        canScrollRight: false,
+      });
+      return;
+    }
+
+    carousel.scrollTo({ left: 0 });
+    const frame = window.requestAnimationFrame(updateCommitCarouselScrollState);
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedDay?.date, selectedDay?.repositories.length]);
+
+  useEffect(() => {
+    window.addEventListener("resize", updateCommitCarouselScrollState);
+
+    return () => window.removeEventListener("resize", updateCommitCarouselScrollState);
+  }, []);
+
   function selectYear(year: number) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("year", String(year));
@@ -118,6 +150,44 @@ export default function HistoryPage() {
     setExplicitSelectionsByYear((current) =>
       rememberSelectedHistoryDate(current, selectedYear, dateKey),
     );
+  }
+
+  function updateCommitCarouselScrollState() {
+    const carousel = commitCarouselRef.current;
+    if (!carousel) {
+      setCommitCarouselScrollState({
+        canScrollLeft: false,
+        canScrollRight: false,
+      });
+      return;
+    }
+
+    const maxScrollLeft = Math.max(0, carousel.scrollWidth - carousel.clientWidth);
+    const nextState = {
+      canScrollLeft: carousel.scrollLeft > 1,
+      canScrollRight: carousel.scrollLeft < maxScrollLeft - 1,
+    };
+
+    setCommitCarouselScrollState((currentState) =>
+      currentState.canScrollLeft === nextState.canScrollLeft &&
+      currentState.canScrollRight === nextState.canScrollRight
+        ? currentState
+        : nextState,
+    );
+  }
+
+  function scrollSelectedDayCommits(direction: "left" | "right") {
+    const carousel = commitCarouselRef.current;
+    if (!carousel) return;
+
+    const firstCard = carousel.querySelector<HTMLElement>(".gf-history-repo-card");
+    const cardWidth = firstCard?.getBoundingClientRect().width ?? 380;
+    carousel.scrollBy({
+      left:
+        (direction === "left" ? -1 : 1) *
+        (cardWidth + COMMIT_CAROUSEL_CARD_GAP),
+      behavior: "smooth",
+    });
   }
 
   const totals = useMemo(() => {
@@ -227,51 +297,44 @@ export default function HistoryPage() {
 
           {selectedDay ? (
             <div className="gf-history-day-details">
-              {selectedDay.repositories.map((repo) => (
-                <article
-                  key={`${selectedDay.date}-${repo.id}`}
-                  className="gf-history-repo-card"
+              <div
+                id="history-selected-day-carousel"
+                ref={commitCarouselRef}
+                className="gf-history-commit-carousel"
+                role="region"
+                aria-label="Commits for selected day"
+                tabIndex={0}
+                onScroll={updateCommitCarouselScrollState}
+              >
+                {selectedDay.repositories.map((repo) => (
+                  <HistoryRepoCard key={`${selectedDay.date}-${repo.id}`} repo={repo} />
+                ))}
+              </div>
+
+              <div
+                className="gf-history-carousel-controls"
+                aria-label="Selected day commit navigation"
+              >
+                <button
+                  type="button"
+                  aria-label="Scroll commits left"
+                  aria-controls="history-selected-day-carousel"
+                  onClick={() => scrollSelectedDayCommits("left")}
+                  disabled={!commitCarouselScrollState.canScrollLeft}
                 >
-                  <div className="gf-history-repo-head">
-                    <div>
-                      <h4>{repo.repo}</h4>
-                      <p>
-                        {repo.branch} · {repo.direction} · {repo.device} ·{" "}
-                        {formatTime(repo.syncedAt)} · {formatBytes(repo.bundleSizeBytes)}
-                      </p>
-                    </div>
+                  <CarouselArrowIcon direction="left" />
+                </button>
 
-                    <span>{repo.commitCount}</span>
-                  </div>
-
-                  <div className="gf-history-commit-list">
-                    {repo.commits.length > 0 ? (
-                      repo.commits.map((commit) => (
-                        <div key={commit.sha} className="gf-history-commit-row">
-                          <code>{commit.sha}</code>
-
-                          <div>
-                            <strong>{commit.message}</strong>
-                            <p>
-                              {commit.author ?? "Unknown author"} · {commit.time}
-                            </p>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="gf-history-commit-row">
-                        <code>{repo.commitCount}</code>
-                        <div>
-                          <strong>
-                            {repo.commitCount} commit{repo.commitCount === 1 ? "" : "s"} synced
-                          </strong>
-                          <p>Commit details were not recorded for this older sync.</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </article>
-              ))}
+                <button
+                  type="button"
+                  aria-label="Scroll commits right"
+                  aria-controls="history-selected-day-carousel"
+                  onClick={() => scrollSelectedDayCommits("right")}
+                  disabled={!commitCarouselScrollState.canScrollRight}
+                >
+                  <CarouselArrowIcon direction="right" />
+                </button>
+              </div>
             </div>
           ) : (
             <div className="gf-history-empty-details">
@@ -297,6 +360,85 @@ export default function HistoryPage() {
         </aside>
       </section>
     </div>
+  );
+}
+
+function HistoryRepoCard({ repo }: { repo: RepoSyncItem }) {
+  const visibleCommits = repo.commits.slice(0, MAX_VISIBLE_CARD_COMMITS);
+  const hiddenCommitCount = Math.max(
+    0,
+    repo.commits.length - visibleCommits.length,
+  );
+
+  return (
+    <article className="gf-history-repo-card">
+      <div className="gf-history-repo-head">
+        <div>
+          <h4>{repo.repo}</h4>
+          <p>
+            {formatSelectedDayCommitMetadata({
+              device: repo.device,
+              sizeBytes: repo.bundleSizeBytes,
+              syncedAt: repo.syncedAt,
+            })}
+          </p>
+        </div>
+
+        <span>{repo.commitCount}</span>
+      </div>
+
+      <div className="gf-history-commit-list">
+        {visibleCommits.length > 0 ? (
+          <>
+            {visibleCommits.map((commit) => (
+              <div key={commit.sha} className="gf-history-commit-row">
+                <code>{commit.sha}</code>
+
+                <div>
+                  <strong>{commit.message}</strong>
+                  <p>
+                    {commit.author ?? "Unknown author"} · {commit.time}
+                  </p>
+                </div>
+              </div>
+            ))}
+
+            {hiddenCommitCount > 0 ? (
+              <p className="gf-history-commit-more">
+                +{hiddenCommitCount} more commit
+                {hiddenCommitCount === 1 ? "" : "s"} synced
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <div className="gf-history-commit-row">
+            <code>{repo.commitCount}</code>
+            <div>
+              <strong>
+                {repo.commitCount} commit{repo.commitCount === 1 ? "" : "s"} synced
+              </strong>
+              <p>Commit details were not recorded for this older sync.</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function CarouselArrowIcon({ direction }: { direction: "left" | "right" }) {
+  const path = direction === "left" ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6";
+
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+      <path
+        d={path}
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -350,17 +492,17 @@ function buildSyncHistory(events: DashboardData["history"]) {
     day.repositories.push({
       id: event.id,
       repo: event.repositoryName,
-      branch: event.relayEntryId,
       device: event.deviceName,
       syncedAt: event.createdAt,
       bundleSizeBytes: event.bundleSizeBytes,
-      direction: event.eventType,
       commitCount: event.commitCount,
       commits: event.commits.map((commit) => ({
         sha: shortSHA(commit.sha),
         message: commit.message,
         author: commit.authorName,
-        time: formatTime(commit.committedAt ?? commit.authoredAt ?? event.createdAt),
+        time: formatHistoryTime(
+          commit.committedAt ?? commit.authoredAt ?? event.createdAt,
+        ),
       })),
     });
 
@@ -372,23 +514,4 @@ function buildSyncHistory(events: DashboardData["history"]) {
 
 function shortSHA(sha: string) {
   return sha.length > 7 ? sha.slice(0, 7) : sha;
-}
-
-function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString("en", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatBytes(bytes: number) {
-  if (bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let value = bytes;
-  let index = 0;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
-    index += 1;
-  }
-  return `${value >= 10 || index === 0 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
 }
