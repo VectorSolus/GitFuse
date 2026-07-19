@@ -5,31 +5,15 @@ import { useMemo, useState } from "react";
 
 import { DashboardDataError } from "@/components/dashboard/data-error";
 import { useDashboardData, type DashboardData } from "@/hooks/use-dashboard-data";
-
-type UsageMetricId = "repositories" | "devices" | "storage" | "history" | "bundle";
-
-type UsageDetailRow = {
-  id: string;
-  name: string;
-  meta: string;
-  value?: string;
-};
-
-type UsageMetric = {
-  id: UsageMetricId;
-  label: string;
-  value: number;
-  limit: number;
-  displayValue?: string;
-  displayLimit?: string;
-  unit: string;
-  helper: string;
-  detail: string;
-  tone: "ocean" | "green" | "violet" | "amber" | "blue";
-  rowsTitle: string;
-  emptyText: string;
-  rows: UsageDetailRow[];
-};
+import {
+  buildUsageMetrics,
+  clampPercent,
+  formatBytes,
+  formatLimit,
+  formatPercent,
+  getUsageMetricPercent,
+  type UsageMetricId,
+} from "@/lib/usage-metrics";
 
 const proFeatures = [
   `${formatLimit(PLAN_LIMITS.pro.repos)} private repositories`,
@@ -49,7 +33,7 @@ export default function UsagePage() {
 
   const selectedMetric = useMemo(() => {
     return usageMetrics.find((metric) => metric.id === selectedMetricId);
-  }, [selectedMetricId]);
+  }, [selectedMetricId, usageMetrics]);
 
   if (error && !loading) {
     return <DashboardDataError message={error} />;
@@ -71,18 +55,20 @@ export default function UsagePage() {
       <section className="gf-usage-layout">
         <div className="gf-usage-metrics-grid">
           {usageMetrics.map((metric) => {
-            const percent = getPercent(metric.value, metric.limit);
+            const percent = getUsageMetricPercent(metric);
             const percentLabel = formatPercent(percent);
+            const isSelected = selectedMetricId === metric.id;
 
             return (
               <button
                 key={metric.id}
                 type="button"
                 className={`gf-usage-metric-card gf-usage-tone-${metric.tone} ${
-                  selectedMetricId === metric.id ? "is-active" : ""
+                  isSelected ? "is-active" : ""
                 }`}
                 onClick={() => setSelectedMetricId(metric.id)}
-                aria-label={`Show ${metric.label} details`}
+                aria-label={`Show ${metric.label} details, ${metric.displayValue ?? metric.value} of ${metric.displayLimit ?? metric.limit}`}
+                aria-pressed={isSelected}
               >
                 <span className="gf-usage-card-tooltip">
                   Click for more details
@@ -125,7 +111,7 @@ export default function UsagePage() {
 
             <span>
               {formatPercent(
-                getPercent(selectedMetric?.value ?? 0, selectedMetric?.limit ?? 1),
+                selectedMetric ? getUsageMetricPercent(selectedMetric) : 0,
               )}
             </span>
           </div>
@@ -148,9 +134,8 @@ export default function UsagePage() {
                 <div className="gf-usage-progress">
                   <i
                     style={{
-                      width: `${getPercent(
-                        selectedMetric.value,
-                        selectedMetric.limit,
+                      width: `${clampPercent(
+                        getUsageMetricPercent(selectedMetric),
                       )}%`,
                     }}
                   />
@@ -165,22 +150,32 @@ export default function UsagePage() {
                   <strong>{selectedMetric.rows.length}</strong>
                 </div>
 
-                {selectedMetric.rows.length > 0 ? (
-                  selectedMetric.rows.map((row) => (
-                    <div key={`${selectedMetric.id}-${row.id}`} className="gf-usage-detail-row">
-                      <div>
-                        <strong>{row.name}</strong>
-                        <p>{row.meta}</p>
-                      </div>
+                <div
+                  className="gf-usage-detail-list-body"
+                  role="region"
+                  aria-label={`${selectedMetric.rowsTitle} for ${selectedMetric.label}`}
+                  tabIndex={0}
+                >
+                  {selectedMetric.rows.length > 0 ? (
+                    selectedMetric.rows.map((row) => (
+                      <div
+                        key={`${selectedMetric.id}-${row.id}`}
+                        className="gf-usage-detail-row"
+                      >
+                        <div>
+                          <strong>{row.name}</strong>
+                          <p>{row.meta}</p>
+                        </div>
 
-                      {row.value ? <span>{row.value}</span> : null}
+                        {row.value ? <span>{row.value}</span> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="gf-usage-detail-empty">
+                      {selectedMetric.emptyText}
                     </div>
-                  ))
-                ) : (
-                  <div className="gf-usage-detail-empty">
-                    {selectedMetric.emptyText}
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               <div className="gf-usage-tip-card">
@@ -300,181 +295,6 @@ function BillingModal({ onClose }: { onClose: () => void }) {
       </section>
     </div>
   );
-}
-
-function getPercent(value: number, limit: number) {
-  if (limit <= 0) return 0;
-  return Math.min(100, Math.max(0, (value / limit) * 100));
-}
-
-function clampPercent(value: number) {
-  return Math.min(100, Math.max(0, value));
-}
-
-function formatPercent(value: number) {
-  if (value === 0) return "0%";
-  if (value < 0.01) return "<0.01%";
-  if (value < 1) return `${value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}%`;
-  return `${Math.round(value)}%`;
-}
-
-function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
-  const usage = data?.usage;
-  const repos = data?.repositories ?? [];
-  const devices = data?.devices ?? [];
-  const history = data?.history ?? [];
-  const repoLimit = usage?.repos.max === "unlimited" ? Math.max(usage.repos.current, 1) : usage?.repos.max ?? 5;
-  const deviceLimit =
-    usage?.devices.max === "unlimited" ? Math.max(usage.devices.current, 1) : usage?.devices.max ?? 3;
-  const storageLimitBytes = usage?.storage.maxBytes ?? 500 * 1024 * 1024;
-  const storageCurrentBytes = usage?.storage.currentBytes ?? 0;
-  const bundleLimitBytes = usage?.bundleSize.maxBytes ?? 50 * 1024 * 1024;
-  const largestBundleBytes = usage?.bundleSize.largestRecentBundleBytes ?? 0;
-  const historyUsedDays = usage?.historyRetention?.usedDays ?? distinctHistoryDays(history);
-  const historyLimitDays = usage?.historyRetention?.maxDays ?? usage?.historyDays ?? 30;
-
-  return [
-    {
-      id: "repositories",
-      label: "Repositories",
-      value: usage?.repos.current ?? 0,
-      limit: repoLimit,
-      unit: "repos",
-      helper: "tracked repositories",
-      detail:
-        "Repositories show the Git workspaces currently tracked by GitFuse. The count includes repositories that have been added through the CLI and are ready for private sync.",
-      tone: "ocean",
-      rowsTitle: "Synced repositories",
-      emptyText: "No repositories have been synced yet.",
-      rows: repos.map((repo) => ({
-        id: repo.id,
-        name: repo.displayName,
-        meta: repo.relayEntryId,
-        value: `${repo.activeBundleCount} bundles`,
-      })),
-    },
-    {
-      id: "devices",
-      label: "Devices",
-      value: usage?.devices.current ?? 0,
-      limit: deviceLimit,
-      unit: "devices",
-      helper: "trusted machines",
-      detail:
-        "Devices are trusted machines linked to your GitFuse account. Each device can push or pull private commit bundles after authentication.",
-      tone: "green",
-      rowsTitle: "Linked devices",
-      emptyText: "No devices are linked yet.",
-      rows: devices.map((device) => ({
-        id: device.id,
-        name: device.name,
-        meta: device.lastActiveAt ? `Last active ${formatDate(device.lastActiveAt)}` : "No activity recorded",
-        value: device.status,
-      })),
-    },
-    {
-      id: "storage",
-      label: "Storage",
-      value: storageCurrentBytes,
-      limit: storageLimitBytes,
-      displayValue: formatBytes(storageCurrentBytes),
-      displayLimit: formatBytes(storageLimitBytes),
-      unit: "relay bytes",
-      helper: "private relay storage",
-      detail:
-        "Storage is used by encrypted commit bundles waiting in the private relay. Cleaning old bundles or upgrading the plan can increase available space later.",
-      tone: "violet",
-      rowsTitle: "Storage breakdown",
-      emptyText: "No storage has been used yet.",
-      rows: repos
-        .filter((repo) => repo.activeStorageBytes > 0)
-        .map((repo) => ({
-          id: repo.id,
-          name: repo.displayName,
-          meta: "Encrypted relay payloads",
-          value: formatBytes(repo.activeStorageBytes),
-        })),
-    },
-    {
-      id: "history",
-      label: "History retention",
-      value: historyUsedDays,
-      limit: historyLimitDays,
-      unit: "days",
-      helper: "activity days retained",
-      detail:
-        "History retention shows actual calendar days with retained sync activity against the current plan window.",
-      tone: "amber",
-      rowsTitle: "History coverage",
-      emptyText: "No sync history is available yet.",
-      rows: history.map((event) => ({
-        id: event.id,
-        name: event.repositoryName,
-        meta: `${event.eventType} by ${event.deviceName}`,
-        value: formatDate(event.createdAt),
-      })),
-    },
-    {
-      id: "bundle",
-      label: "Bundle size limit",
-      value: largestBundleBytes,
-      limit: bundleLimitBytes,
-      displayValue: formatBytes(largestBundleBytes),
-      displayLimit: formatBytes(bundleLimitBytes),
-      unit: "largest sync",
-      helper: "actual largest recent bundle",
-      detail:
-        "Bundle size compares the largest actual encrypted sync payload with the current plan's per-sync allowance.",
-      tone: "blue",
-      rowsTitle: "Recent bundle sizes",
-      emptyText: "No bundles have been created yet.",
-      rows: (usage?.recentBundles ?? [])
-        .map((bundle) => ({
-          id: `${bundle.repositoryName}-${bundle.syncedAt}-${bundle.sizeBytes}`,
-          name: bundle.repositoryName,
-          meta: `${bundle.deviceName ?? "Unknown device"} · ${formatDate(bundle.syncedAt)}`,
-          value: formatBytes(bundle.sizeBytes),
-        })),
-    },
-  ];
-}
-
-function distinctHistoryDays(history: DashboardData["history"]) {
-  return new Set(history.map((event) => formatDateKey(new Date(event.createdAt)))).size;
-}
-
-function formatDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function formatBytes(bytes: number) {
-  if (bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let value = bytes;
-  let index = 0;
-
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
-    index += 1;
-  }
-
-  return `${value >= 10 || index === 0 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
-}
-
-function formatLimit(value: number | "unlimited") {
-  return value === "unlimited" ? "Unlimited" : String(value);
-}
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 function titleCase(value: string) {

@@ -6678,36 +6678,61 @@ body {
 
 .gf-usage-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
   gap: 1rem;
+  align-items: start;
 }
 
 .gf-usage-metrics-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 178px;
   gap: 1rem;
 }
 
 .gf-usage-metric-card {
-  min-height: 178px;
+  height: 178px;
+  min-height: 0;
   border-radius: 1.35rem;
   padding: 1.1rem;
   text-align: left;
   cursor: pointer;
   color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.85rem;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
 }
 
 .gf-usage-metric-card.is-active {
   border-color: rgba(125, 211, 252, 0.38);
+  background:
+    linear-gradient(180deg, rgba(10, 38, 65, 0.82), rgba(3, 11, 22, 0.86)),
+    radial-gradient(circle at top left, rgba(18, 184, 222, 0.18), transparent 28rem);
   box-shadow:
     0 0 0 1px rgba(125, 211, 252, 0.18),
     0 30px 100px rgba(8, 144, 242, 0.16);
+}
+
+.gf-usage-metric-card:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.72);
+  outline-offset: 3px;
 }
 
 .gf-usage-metric-head {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
+  min-height: 4.85rem;
+}
+
+.gf-usage-metric-head > div {
+  min-width: 0;
 }
 
 .gf-usage-metric-head p {
@@ -6720,14 +6745,15 @@ body {
 .gf-usage-metric-head strong {
   display: block;
   margin-top: 0.6rem;
-  font-size: 2.8rem;
-  line-height: 0.95;
-  letter-spacing: -0.07em;
+  font-size: 2.05rem;
+  line-height: 1.05;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 
 .gf-usage-metric-head small {
   color: #6f8498;
-  font-size: 1rem;
+  font-size: 0.95rem;
 }
 
 .gf-usage-metric-head > span {
@@ -6737,10 +6763,11 @@ body {
 }
 
 .gf-usage-progress {
+  flex: 0 0 auto;
   height: 0.8rem;
   border: 1px solid rgba(125, 211, 252, 0.14);
   border-radius: 999px;
-  margin-top: 1.05rem;
+  margin-top: 0;
   overflow: hidden;
   background: rgba(2, 8, 23, 0.62);
 }
@@ -6756,10 +6783,16 @@ body {
 .gf-usage-metric-foot {
   display: flex;
   justify-content: space-between;
+  align-items: flex-end;
   gap: 1rem;
-  margin-top: 0.8rem;
+  min-height: 2.2rem;
+  margin-top: 0;
   color: var(--gf-muted);
   font-size: 0.85rem;
+}
+
+.gf-usage-metric-foot span {
+  min-width: 0;
 }
 
 .gf-usage-metric-foot code {
@@ -6784,21 +6817,39 @@ body {
 }
 
 .gf-usage-detail-panel {
+  position: sticky;
+  top: 6.7rem;
+  align-self: start;
+  height: calc(100vh - 7.5rem);
+  min-height: 34rem;
+  max-height: 48rem;
   border-radius: 1.45rem;
   padding: 1.35rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .gf-usage-detail-header {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 1rem;
+  height: 4.45rem;
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.gf-usage-detail-header > div {
+  min-width: 0;
 }
 
 .gf-usage-detail-header h3 {
   margin: 0;
   color: white;
   font-size: 1.8rem;
-  letter-spacing: -0.06em;
+  line-height: 1.08;
+  letter-spacing: 0;
 }
 
 .gf-usage-detail-header > span {
@@ -6807,17 +6858,25 @@ body {
 }
 
 .gf-usage-large-progress {
+  flex: 0 0 auto;
   margin-top: 1.4rem;
   border: 1px solid rgba(125, 211, 252, 0.12);
   border-radius: 1.2rem;
   padding: 1rem;
   background: rgba(2, 8, 23, 0.42);
+  height: 8.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
 }
 
 .gf-usage-large-progress strong {
   color: white;
-  font-size: 3rem;
-  letter-spacing: -0.07em;
+  font-size: 2.35rem;
+  line-height: 1.05;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 
 .gf-usage-large-progress small {
@@ -6831,11 +6890,17 @@ body {
 }
 
 .gf-usage-detail-copy {
+  flex: 0 0 auto;
+  min-height: 5.2rem;
+  max-height: 5.2rem;
+  margin: 1rem 0 0;
   color: #abc2d6;
-  line-height: 1.7;
+  line-height: 1.6;
+  overflow: hidden;
 }
 
 .gf-usage-tip-card {
+  flex: 0 0 auto;
   margin-top: 1rem;
   border: 1px solid rgba(125, 211, 252, 0.12);
   border-radius: 1rem;
@@ -6874,7 +6939,7 @@ body {
   margin: 0;
   color: white;
   font-size: 1.8rem;
-  letter-spacing: -0.06em;
+  letter-spacing: 0;
 }
 
 .gf-usage-plan-panel ul,
@@ -7161,6 +7226,14 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .gf-usage-detail-panel {
+    position: relative;
+    top: 0;
+    height: min(42rem, calc(100vh - 2rem));
+    min-height: 30rem;
+    max-height: 42rem;
+  }
+
   .gf-settings-side-nav {
     position: relative;
     top: 0;
@@ -7181,6 +7254,15 @@ body {
   .gf-billing-plan-compare,
   .gf-settings-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .gf-usage-metrics-grid {
+    grid-auto-rows: 178px;
+  }
+
+  .gf-usage-detail-panel {
+    height: min(38rem, calc(100vh - 1.5rem));
+    min-height: 30rem;
   }
 
   .gf-billing-modal-panel {
@@ -7265,20 +7347,37 @@ body {
 }
 
 .gf-usage-detail-list {
+  flex: 1 1 auto;
+  min-height: 0;
   margin-top: 1rem;
   border: 1px solid rgba(125, 211, 252, 0.12);
   border-radius: 1.15rem;
   background: rgba(2, 8, 23, 0.38);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .gf-usage-detail-list-head {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   border-bottom: 1px solid rgba(125, 211, 252, 0.1);
   padding: 0.85rem 1rem;
+}
+
+.gf-usage-detail-list-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  outline: 0;
+}
+
+.gf-usage-detail-list-body:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(125, 211, 252, 0.4);
 }
 
 .gf-usage-detail-list-head span {
@@ -7347,7 +7446,7 @@ body {
 }
 
 .gf-usage-detail-panel {
-  min-height: 100%;
+  min-height: 34rem;
 }
 
 .gf-usage-tip-card {
