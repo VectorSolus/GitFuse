@@ -6686,12 +6686,12 @@ body {
 .gf-usage-metrics-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: 178px;
+  grid-auto-rows: 220px;
   gap: 16px;
 }
 
 .gf-usage-metric-card {
-  height: 178px;
+  height: 220px;
   min-height: 0;
   border-radius: 1.35rem;
   padding: 1.1rem;
@@ -7240,9 +7240,24 @@ body {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 768px) {
   .gf-usage-metrics-grid {
+    grid-auto-rows: 240px;
+  }
+
+  .gf-usage-metric-card {
+    height: 240px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .gf-usage-metrics-grid {
+    grid-auto-rows: 280px;
     gap: 24px;
+  }
+
+  .gf-usage-metric-card {
+    height: 280px;
   }
 }
 
@@ -7263,7 +7278,7 @@ body {
   }
 
   .gf-usage-metrics-grid {
-    grid-auto-rows: 178px;
+    grid-auto-rows: 220px;
   }
 
   .gf-usage-detail-panel {
