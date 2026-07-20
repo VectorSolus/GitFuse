@@ -1,5 +1,5 @@
 PackageIdentifier: GitFuse.GitFuse
-PackageVersion: "{{version}}"
+PackageVersion: 0.1.0
 InstallerLocale: en-US
 MinimumOSVersion: 10.0.0.0
 InstallerType: portable
@@ -7,8 +7,14 @@ Commands:
   - gitfuse
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/gitfuse/test-repo-2/releases/download/v{{version}}/gitfuse_{{version}}_windows_amd64.zip
-    InstallerSha256: "{{windows_amd64_sha256}}"
+    InstallerUrl: https://github.com/gitfuse/gitfuse/releases/download/v0.1.0/gitfuse_v0.1.0_windows_amd64.zip
+    InstallerSha256: TODO_REPLACE_WITH_WINDOWS_AMD64_SHA256
+    InstallerSwitches:
+      Silent: ""
+      SilentWithProgress: ""
+  - Architecture: arm64
+    InstallerUrl: https://github.com/gitfuse/gitfuse/releases/download/v0.1.0/gitfuse_v0.1.0_windows_arm64.zip
+    InstallerSha256: TODO_REPLACE_WITH_WINDOWS_ARM64_SHA256
     InstallerSwitches:
       Silent: ""
       SilentWithProgress: ""
