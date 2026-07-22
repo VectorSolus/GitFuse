@@ -19,9 +19,10 @@ export type UsageMetric = {
   id: UsageMetricId;
   label: string;
   value: number;
-  limit: number;
+  limit: number | "unlimited";
   displayValue?: string;
   displayLimit?: string;
+  isUnlimited?: boolean;
   unit: string;
   helper: string;
   detail: string;
@@ -37,12 +38,8 @@ export function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
   const devices = data ? getActiveUsageDevices(data.devices) : [];
   const history = data?.history ?? [];
   const deviceCurrent = data ? devices.length : usage?.devices.current ?? 0;
-  const repoLimit = normalizeLimit(
-    usage?.repos.max,
-    usage?.repos.current ?? 0,
-    5,
-  );
-  const deviceLimit = normalizeLimit(usage?.devices.max, deviceCurrent, 3);
+  const repoLimit = normalizeLimit(usage?.repos.max, 5);
+  const deviceLimit = normalizeLimit(usage?.devices.max, 2);
   const storageLimitBytes = toFiniteNumber(
     usage?.storage.maxBytes,
     500 * 1024 * 1024,
@@ -67,8 +64,13 @@ export function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
       label: "Repositories",
       value: toFiniteNumber(usage?.repos.current, 0),
       limit: repoLimit,
+      displayLimit: formatCompactLimit(repoLimit),
+      isUnlimited: repoLimit === "unlimited",
       unit: "repos",
-      helper: "tracked repositories",
+      helper:
+        repoLimit === "unlimited"
+          ? "unlimited tracked repositories"
+          : "tracked repositories",
       detail:
         "Repositories show the Git workspaces currently tracked by GitFuse. The count includes repositories that have been added through the CLI and are ready for private sync.",
       tone: "ocean",
@@ -86,8 +88,13 @@ export function buildUsageMetrics(data: DashboardData | null): UsageMetric[] {
       label: "Devices",
       value: deviceCurrent,
       limit: deviceLimit,
+      displayLimit: formatCompactLimit(deviceLimit),
+      isUnlimited: deviceLimit === "unlimited",
       unit: "devices",
-      helper: "trusted machines",
+      helper:
+        deviceLimit === "unlimited"
+          ? "unlimited trusted machines"
+          : "trusted machines",
       detail:
         "Devices are trusted machines linked to your GitFuse account. Each device can push or pull private commit bundles after authentication.",
       tone: "green",
@@ -184,7 +191,9 @@ export function getUsageMetricPercent(
   return getPercent(metric.value, metric.limit);
 }
 
-export function getPercent(value: number, limit: number) {
+export function getPercent(value: number, limit: number | "unlimited") {
+  if (limit === "unlimited") return 0;
+
   const current = toFiniteNumber(value, 0);
   const max = toFiniteNumber(limit, 0);
   if (max <= 0) return 0;
@@ -226,6 +235,10 @@ export function formatLimit(value: number | "unlimited") {
   return value === "unlimited" ? "Unlimited" : String(value);
 }
 
+export function formatCompactLimit(value: number | "unlimited") {
+  return value === "unlimited" ? "∞" : String(value);
+}
+
 export function formatDate(value: string) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "Unknown date";
@@ -239,11 +252,10 @@ export function formatDate(value: string) {
 
 function normalizeLimit(
   value: number | "unlimited" | null | undefined,
-  current: number,
   fallback: number,
 ) {
   if (value === "unlimited") {
-    return Math.max(toFiniteNumber(current, 0), 1);
+    return "unlimited";
   }
 
   return Math.max(0, toFiniteNumber(value, fallback));

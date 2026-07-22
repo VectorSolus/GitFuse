@@ -9,8 +9,8 @@ import {
 
 test("plan history retention exposes configured calendar years", () => {
   assert.equal(PLAN_LIMITS.free.historyDays, 7);
-  assert.equal(PLAN_LIMITS.pro.historyDays, 730);
-  assert.equal(PLAN_LIMITS.team.historyDays, 730);
+  assert.equal(PLAN_LIMITS.pro.historyDays, 365);
+  assert.equal(PLAN_LIMITS.team.historyDays, 365);
 
   assert.deepEqual(availableHistoryYears("free", 2026), [2026]);
   assert.deepEqual(availableHistoryYears("pro", 2026), [2026, 2025]);

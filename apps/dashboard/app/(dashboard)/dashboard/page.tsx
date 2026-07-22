@@ -26,7 +26,7 @@ export default function DashboardOverviewPage() {
     },
     {
       label: "Devices",
-      value: `${usage?.devices.current ?? 0} / ${formatLimit(usage?.devices.max ?? 3)}`,
+      value: `${usage?.devices.current ?? 0} / ${formatLimit(usage?.devices.max ?? 2)}`,
       helper: "trusted machines connected",
     },
     {
@@ -53,7 +53,7 @@ export default function DashboardOverviewPage() {
       title: "Current plan",
       value: titleCase(billing?.tier ?? "free"),
       helper: `${formatLimit(usage?.repos.max ?? 5)} repositories · ${formatLimit(
-        usage?.devices.max ?? 3,
+        usage?.devices.max ?? 2,
       )} devices · ${formatBytes(usage?.storage.maxBytes ?? 500 * 1024 * 1024)} storage.`,
     },
     {
@@ -231,7 +231,7 @@ export default function DashboardOverviewPage() {
 }
 
 function formatLimit(value: number | "unlimited") {
-  return value === "unlimited" ? "unlimited" : String(value);
+  return value === "unlimited" ? "∞" : String(value);
 }
 
 function formatBytes(bytes: number) {

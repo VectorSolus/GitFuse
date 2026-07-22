@@ -232,7 +232,7 @@ describe("TestDeviceLimit", () => {
     await expect(limitsAfter.json()).resolves.toEqual({
       tier: "paid",
       devices: { limit: null, current: 3 },
-      retention_days: null
+      retention_days: 365
     });
   });
 });

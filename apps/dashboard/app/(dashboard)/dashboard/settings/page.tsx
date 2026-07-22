@@ -12,6 +12,7 @@ import type {
   KeyboardEvent,
 } from "react";
 
+import { CancelPlanButton } from "@/components/dashboard/cancel-plan-button";
 import { useDashboardData, type DashboardData } from "@/hooks/use-dashboard-data";
 import {
   deleteCurrentAccountAction,
@@ -98,6 +99,11 @@ export default function SettingsPage() {
   const [billingOpen, setBillingOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
+  function handleBillingCancelled() {
+    refresh();
+    router.refresh();
+  }
+
   useEffect(() => {
     const section = getSettingsSectionFromQuery(searchParams.get("section"));
 
@@ -152,8 +158,10 @@ export default function SettingsPage() {
         {selectedSection === "Billing" ? (
           <BillingSection
             billingLimits={billingLimits}
+            billing={data?.billing ?? null}
             tier={data?.billing.tier ?? "free"}
             subscriptionStatus={data?.billing.subscriptionStatus ?? null}
+            onCancelled={handleBillingCancelled}
             onOpenBilling={() => setBillingOpen(true)}
           />
         ) : null}
@@ -172,8 +180,10 @@ export default function SettingsPage() {
       {billingOpen ? (
         <BillingModal
           billingLimits={billingLimits}
+          billing={data?.billing ?? null}
           tier={data?.billing.tier ?? "free"}
           subscriptionStatus={data?.billing.subscriptionStatus ?? null}
+          onCancelled={handleBillingCancelled}
           onClose={() => setBillingOpen(false)}
         />
       ) : null}
@@ -769,13 +779,17 @@ function formatDateTime(value: string) {
 
 function BillingSection({
   billingLimits,
+  billing,
   tier,
   subscriptionStatus,
+  onCancelled,
   onOpenBilling,
 }: {
   billingLimits: BillingLimit[];
+  billing: DashboardData["billing"] | null;
   tier: string;
   subscriptionStatus: string | null;
+  onCancelled: () => void;
   onOpenBilling: () => void;
 }) {
   return (
@@ -785,7 +799,7 @@ function BillingSection({
         <h2>Manage plan limits without clutter.</h2>
         <span>
           Your current workspace is on the {tier} tier. Razorpay subscription
-          changes are available from the upgrade flow.
+          changes are confirmed by the GitFuse billing server.
         </span>
       </section>
 
@@ -796,9 +810,18 @@ function BillingSection({
             <h3>{titleCase(tier)} workspace</h3>
           </div>
 
-          <button type="button" onClick={onOpenBilling}>
-            View billing
-          </button>
+          <div className="gf-settings-billing-actions">
+            <button type="button" onClick={onOpenBilling}>
+              View billing
+            </button>
+
+            {billing && isPaidTier(billing.tier) ? (
+              <CancelPlanButton
+                className="gf-settings-cancel-plan-button"
+                onCancelled={onCancelled}
+              />
+            ) : null}
+          </div>
         </div>
 
         <div className="gf-settings-billing-summary">
@@ -1362,13 +1385,17 @@ function DeleteAccountModal({
 
 function BillingModal({
   billingLimits,
+  billing,
   tier,
   subscriptionStatus,
+  onCancelled,
   onClose,
 }: {
   billingLimits: BillingLimit[];
+  billing: DashboardData["billing"] | null;
   tier: string;
   subscriptionStatus: string | null;
+  onCancelled: () => void;
   onClose: () => void;
 }) {
   return (
@@ -1402,21 +1429,39 @@ function BillingModal({
           ))}
         </div>
 
-        <div className="gf-settings-upgrade-tile">
-          <div>
-            <p>Upgrade path</p>
-            <strong>Need more workspace capacity?</strong>
-            <span>
-              Open the upgrade page to review larger limits, longer history, and
-              more private repository capacity.
-            </span>
-          </div>
+        {billing && isPaidTier(billing.tier) ? (
+          <div className="gf-settings-upgrade-tile gf-settings-cancel-tile">
+            <div>
+              <p>Cancel plan</p>
+              <strong>Move this workspace back to Free?</strong>
+              <span>
+                Cancellation runs through the GitFuse billing server before
+                plan limits are refreshed.
+              </span>
+            </div>
 
-          <Link href="/dashboard/upgrade" target="_blank" rel="noreferrer">
-            Upgrade
-            <ExternalArrowIcon />
-          </Link>
-        </div>
+            <CancelPlanButton
+              className="gf-settings-cancel-plan-button"
+              onCancelled={onCancelled}
+            />
+          </div>
+        ) : (
+          <div className="gf-settings-upgrade-tile">
+            <div>
+              <p>Upgrade path</p>
+              <strong>Need more workspace capacity?</strong>
+              <span>
+                Open the upgrade page to review larger limits, longer history,
+                and more private repository capacity.
+              </span>
+            </div>
+
+            <Link href="/dashboard/upgrade" target="_blank" rel="noreferrer">
+              Upgrade
+              <ExternalArrowIcon />
+            </Link>
+          </div>
+        )}
       </section>
     </div>
   );
@@ -1456,6 +1501,10 @@ function buildBillingLimits(data: DashboardData | null): BillingLimit[] {
 
 function formatLimit(value: number | "unlimited") {
   return value === "unlimited" ? "Unlimited" : String(value);
+}
+
+function isPaidTier(value: string) {
+  return value === "pro" || value === "team";
 }
 
 function formatBytes(bytes: number) {

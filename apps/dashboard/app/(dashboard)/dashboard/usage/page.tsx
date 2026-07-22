@@ -80,8 +80,13 @@ export default function UsagePage() {
         <div className="gf-usage-metrics-grid">
           {usageMetrics.map((metric) => {
             const percent = getUsageMetricPercent(metric);
-            const percentLabel = formatPercent(percent);
+            const percentLabel = metric.isUnlimited
+              ? "Unlimited"
+              : formatPercent(percent);
             const isSelected = selectedMetricId === metric.id;
+            const progressWidth = metric.isUnlimited
+              ? "100%"
+              : `${clampPercent(percent)}%`;
 
             return (
               <button
@@ -106,14 +111,20 @@ export default function UsagePage() {
                 <div className="gf-usage-metric-main">
                   <div className="gf-usage-metric-value">
                     <strong>{metric.displayValue ?? metric.value}</strong>
-                    <small>/{metric.displayLimit ?? metric.limit}</small>
+                    <small> / {metric.displayLimit ?? metric.limit}</small>
                   </div>
 
                   <div
-                    className="gf-usage-progress"
-                    aria-label={`${metric.label} usage ${percent}%`}
+                    className={`gf-usage-progress ${
+                      metric.isUnlimited ? "is-unlimited" : ""
+                    }`}
+                    aria-label={
+                      metric.isUnlimited
+                        ? `${metric.label} has unlimited capacity`
+                        : `${metric.label} usage ${percent}%`
+                    }
                   >
-                    <i style={{ width: `${clampPercent(percent)}%` }} />
+                    <i style={{ width: progressWidth }} />
                   </div>
                 </div>
 
@@ -134,9 +145,11 @@ export default function UsagePage() {
             </div>
 
             <span>
-              {formatPercent(
-                selectedMetric ? getUsageMetricPercent(selectedMetric) : 0,
-              )}
+              {selectedMetric?.isUnlimited
+                ? "Unlimited"
+                : formatPercent(
+                    selectedMetric ? getUsageMetricPercent(selectedMetric) : 0,
+                  )}
             </span>
           </div>
 
@@ -149,18 +162,25 @@ export default function UsagePage() {
                   <strong>
                     {selectedMetric.displayValue ?? selectedMetric.value}
                     <small>
-                      /{selectedMetric.displayLimit ?? selectedMetric.limit}
+                      {" / "}
+                      {selectedMetric.displayLimit ?? selectedMetric.limit}
                     </small>
                   </strong>
                   <p>{selectedMetric.unit}</p>
                 </div>
 
-                <div className="gf-usage-progress">
+                <div
+                  className={`gf-usage-progress ${
+                    selectedMetric.isUnlimited ? "is-unlimited" : ""
+                  }`}
+                >
                   <i
                     style={{
-                      width: `${clampPercent(
-                        getUsageMetricPercent(selectedMetric),
-                      )}%`,
+                      width: selectedMetric.isUnlimited
+                        ? "100%"
+                        : `${clampPercent(
+                            getUsageMetricPercent(selectedMetric),
+                          )}%`,
                     }}
                   />
                 </div>
@@ -332,7 +352,7 @@ function buildPlanFeatures(data: DashboardData | null) {
   const usage = data?.usage;
   return [
     `${formatLimit(usage?.repos.max ?? 5)} tracked repositories`,
-    `${formatLimit(usage?.devices.max ?? 3)} trusted devices`,
+    `${formatLimit(usage?.devices.max ?? 2)} trusted devices`,
     `${formatBytes(usage?.storage.maxBytes ?? 500 * 1024 * 1024)} relay storage`,
     `${usage?.historyDays ?? 30} days sync history`,
     `${formatBytes(usage?.bundleSize.maxBytes ?? 50 * 1024 * 1024)} bundle size`,

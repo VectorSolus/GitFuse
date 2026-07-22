@@ -55,7 +55,7 @@ export default function DevicesPage() {
     data?.deviceSummary ??
     buildDashboardDeviceSummary({
       devices,
-      deviceLimit: data?.accountLimits?.devices.limit ?? data?.usage.devices.max ?? 3,
+      deviceLimit: data?.accountLimits?.devices.limit ?? data?.usage.devices.max ?? 2,
       activeSessionCount: data ? 1 : 0,
       pendingApprovalCount: 0,
     });
@@ -315,7 +315,7 @@ export default function DevicesPage() {
 }
 
 function formatLimit(value: number | "unlimited") {
-  return value === "unlimited" ? "unlimited" : String(value);
+  return value === "unlimited" ? "∞" : String(value);
 }
 
 function formatDate(value: string) {

@@ -218,7 +218,7 @@ export async function setPairingPinAction(input: {
     });
     if (!result.ok) {
       console.error("[pairing-pin-settings]", result.error);
-      return { ok: false, error: "Could not update your pairing PIN." };
+      return { ok: false, error: result.error };
     }
 
     return { ok: true };

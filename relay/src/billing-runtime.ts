@@ -25,26 +25,26 @@ export const PLAN_LIMITS: Record<PlanTier, TierLimits> = {
   pro: {
     repos: "unlimited",
     devices: "unlimited",
-    historyDays: 730,
+    historyDays: 365,
     historyYears: 2,
-    bundleSizeBytes: 500 * 1024 * 1024,
-    storageTotalBytes: 50 * 1024 * 1024 * 1024,
+    bundleSizeBytes: 1024 * 1024 * 1024,
+    storageTotalBytes: 30 * 1024 * 1024 * 1024,
   },
   team: {
     repos: "unlimited",
     devices: "unlimited",
-    historyDays: 730,
+    historyDays: 365,
     historyYears: 2,
-    bundleSizeBytes: 500 * 1024 * 1024,
-    storageTotalBytes: 50 * 1024 * 1024 * 1024,
+    bundleSizeBytes: 1024 * 1024 * 1024,
+    storageTotalBytes: 30 * 1024 * 1024 * 1024,
   },
   enterprise: {
     repos: "unlimited",
     devices: "unlimited",
-    historyDays: 730,
+    historyDays: 365,
     historyYears: 2,
-    bundleSizeBytes: 500 * 1024 * 1024,
-    storageTotalBytes: 50 * 1024 * 1024 * 1024,
+    bundleSizeBytes: 1024 * 1024 * 1024,
+    storageTotalBytes: 30 * 1024 * 1024 * 1024,
   },
 };
 
@@ -60,7 +60,7 @@ export function accountLimitsForTier(tier: AccountTier) {
     devices: {
       limit: tier === "free" ? 2 : null,
     },
-    retentionDays: tier === "free" ? 7 : null,
+    retentionDays: tier === "free" ? 7 : 365,
   };
 }
 

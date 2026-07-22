@@ -5,6 +5,7 @@ const routeState = vi.hoisted(() => ({
   session: null as unknown,
   account: null as unknown,
   billing: { tier: "free" },
+  security: { pairingPinSet: true },
 }));
 
 vi.mock("./lib/auth", () => ({
@@ -17,6 +18,10 @@ vi.mock("./lib/account", () => ({
 
 vi.mock("./lib/billing", () => ({
   getDashboardBilling: vi.fn(async () => routeState.billing),
+}));
+
+vi.mock("./lib/pairing-pin", () => ({
+  getPairingSecuritySummary: vi.fn(async () => routeState.security),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -64,6 +69,7 @@ describe("dashboard route guard", () => {
     routeState.session = null;
     routeState.account = null;
     routeState.billing = { tier: "free" };
+    routeState.security = { pairingPinSet: true };
   });
 
   it("redirects a request without a session to /login", async () => {
@@ -87,10 +93,26 @@ describe("dashboard route guard", () => {
       name: "octo",
       plan: "Free",
     });
+    expect(result.props.needsPairingPinOnboarding).toBe(false);
     expect(findDashboardAccountForSession).toHaveBeenCalledWith({
       id: "user_123",
       email: "octo@example.com",
     });
+  });
+
+  it("passes onboarding state when the account has no pairing PIN", async () => {
+    routeState.session = {
+      user: {
+        id: "user_123",
+        email: "octo@example.com",
+      },
+    };
+    routeState.account = verifiedAccount();
+    routeState.security = { pairingPinSet: false };
+
+    const result = await AppDashboardLayout({ children: "dashboard" });
+
+    expect(result.props.needsPairingPinOnboarding).toBe(true);
   });
 
   it("redirects an authenticated but unverified account to /verify", async () => {

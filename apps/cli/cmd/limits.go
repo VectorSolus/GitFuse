@@ -56,7 +56,7 @@ func loadAccountLimits(ctx context.Context) (accountLimitsResponse, error) {
 }
 
 func renderAccountLimits(limits accountLimitsResponse) string {
-	deviceLimit := "unlimited"
+	deviceLimit := "∞"
 	if limits.Devices.Limit != nil {
 		deviceLimit = fmt.Sprintf("%d", *limits.Devices.Limit)
 	}

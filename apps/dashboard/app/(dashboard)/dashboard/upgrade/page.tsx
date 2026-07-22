@@ -4,6 +4,7 @@ import { PLAN_LIMITS, type PlanTier } from "@gitfuse/types/billing";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+import { CancelPlanButton } from "@/components/dashboard/cancel-plan-button";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 
 type RazorpayCheckoutResponse = {
@@ -43,7 +44,7 @@ type Plan = {
   tier: "free" | "pro" | "team";
   price: string;
   description: string;
-  badge: string;
+  badge?: string;
   current?: boolean;
   highlighted?: boolean;
   features: string[];
@@ -62,7 +63,7 @@ function buildPlans(
       name: "Free",
       tier: "free",
       price: "$0",
-      badge: currentTier === "free" ? "Current plan" : "Included",
+      badge: currentTier === "free" ? "Current" : undefined,
       current: currentTier === "free",
       description:
         "For personal testing, local development, and small private sync workflows.",
@@ -144,7 +145,7 @@ const comparisonRows = [
 ];
 
 export default function UpgradePage() {
-  const { data } = useDashboardData();
+  const { data, refresh } = useDashboardData();
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutMessage, setCheckoutMessage] = useState("");
   const [checkoutPendingTier, setCheckoutPendingTier] = useState<
@@ -295,7 +296,7 @@ export default function UpgradePage() {
           <strong>{titleCase(currentTier)}</strong>
           <span>
             {formatLimit(data?.usage.repos.max ?? 5)} repositories ·{" "}
-            {formatLimit(data?.usage.devices.max ?? 3)} devices ·{" "}
+            {formatLimit(data?.usage.devices.max ?? 2)} devices ·{" "}
             {formatBytes(data?.usage.storage.maxBytes ?? 500 * 1024 * 1024)} storage
           </span>
           <Link href="/dashboard/settings?section=billing">
@@ -313,7 +314,7 @@ export default function UpgradePage() {
             }`}
           >
             <div className="gf-upgrade-plan-top">
-              <span>{plan.badge}</span>
+              {plan.badge ? <span>{plan.badge}</span> : null}
               <h3>{plan.name}</h3>
               <strong>{plan.price}</strong>
               <p>{plan.description}</p>
@@ -337,10 +338,11 @@ export default function UpgradePage() {
               ))}
             </ul>
 
-            {plan.current ? (
-              <button type="button" disabled>
-                Current plan
-              </button>
+            {plan.tier === "free" ? null : plan.current ? (
+              <CancelPlanButton
+                className="gf-upgrade-plan-cancel-button"
+                onCancelled={() => refresh()}
+              />
             ) : (
               <button
                 type="button"

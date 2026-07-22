@@ -25,6 +25,15 @@ const activeDeviceB: DashboardDevice = {
   status: "active",
 };
 
+const activeDeviceC: DashboardDevice = {
+  id: "00000000-0000-4000-8000-000000000104",
+  name: "Desk-Studio.local",
+  lastActiveAt: "2026-07-18T09:15:00.000Z",
+  createdAt: "2026-07-04T08:00:00.000Z",
+  revokedAt: null,
+  status: "active",
+};
+
 const revokedDevice: DashboardDevice = {
   id: "00000000-0000-4000-8000-000000000103",
   name: "Old-Air.local",
@@ -66,6 +75,41 @@ describe("usage metric metadata", () => {
     );
 
     expect(getUsageMetricPercent(devicesMetric)).toBe(100);
+  });
+
+  it("keeps unlimited repo and device limits explicit for compact displays", () => {
+    const metrics = buildUsageMetrics(
+      makeDashboardData({
+        devices: [activeDeviceA, activeDeviceB, activeDeviceC],
+        usage: makeUsage({
+          tier: "pro",
+          repos: { current: 11, max: "unlimited" },
+          devices: { current: 3, max: "unlimited" },
+        }),
+        billing: {
+          ...makeDashboardData().billing,
+          tier: "pro",
+          requestedTier: "pro",
+          paymentProvider: "razorpay",
+          subscriptionStatus: "active",
+        },
+      }),
+    );
+
+    const repositoriesMetric = findMetric(metrics, "repositories");
+    const devicesMetric = findMetric(metrics, "devices");
+
+    expect(repositoriesMetric.value).toBe(11);
+    expect(repositoriesMetric.limit).toBe("unlimited");
+    expect(repositoriesMetric.displayLimit).toBe("∞");
+    expect(repositoriesMetric.isUnlimited).toBe(true);
+    expect(getUsageMetricPercent(repositoriesMetric)).toBe(0);
+
+    expect(devicesMetric.value).toBe(3);
+    expect(devicesMetric.limit).toBe("unlimited");
+    expect(devicesMetric.displayLimit).toBe("∞");
+    expect(devicesMetric.isUnlimited).toBe(true);
+    expect(getUsageMetricPercent(devicesMetric)).toBe(0);
   });
 
   it("excludes revoked devices from the selected device detail rows", () => {

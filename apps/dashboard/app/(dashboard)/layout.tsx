@@ -4,6 +4,7 @@ import React from "react";
 import { findDashboardAccountForSession } from "../../lib/account";
 import { auth } from "../../lib/auth";
 import { getDashboardBilling } from "../../lib/billing";
+import { getPairingSecuritySummary } from "../../lib/pairing-pin";
 import { DashboardLayout } from "./components/layout/dashboard-layout";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,7 @@ export default async function AppDashboardLayout({
     email: account.email,
     username: account.github_username,
   }).catch(() => null);
+  const security = await getPairingSecuritySummary(account.id).catch(() => null);
 
   const user = {
     name: account.display_name || account.github_username,
@@ -50,5 +52,12 @@ export default async function AppDashboardLayout({
       : "Free",
   };
 
-  return <DashboardLayout user={user}>{children}</DashboardLayout>;
+  return (
+    <DashboardLayout
+      user={user}
+      needsPairingPinOnboarding={security ? !security.pairingPinSet : false}
+    >
+      {children}
+    </DashboardLayout>
+  );
 }

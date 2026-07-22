@@ -6,8 +6,11 @@ import { signOut } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import { PairingPinOnboarding } from "./pairing-pin-onboarding";
+
 type DashboardLayoutProps = {
   children: ReactNode;
+  needsPairingPinOnboarding?: boolean;
   user: {
     name: string;
     email: string;
@@ -82,7 +85,11 @@ const pageTitles: Record<string, string> = {
   "/dashboard/upgrade": "Upgrade plan",
 };
 
-export function DashboardLayout({ children, user }: DashboardLayoutProps) {
+export function DashboardLayout({
+  children,
+  needsPairingPinOnboarding = false,
+  user,
+}: DashboardLayoutProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -378,6 +385,8 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
 
         <div className="gf-dash-content">{children}</div>
       </section>
+
+      <PairingPinOnboarding needsPairingPin={needsPairingPinOnboarding} />
     </main>
   );
 }

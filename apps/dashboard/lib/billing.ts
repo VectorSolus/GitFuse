@@ -116,6 +116,24 @@ export type RazorpayCheckoutResult =
       message: string;
     };
 
+type CancelSubscription = (
+  subscriptionId: string,
+  cancelAtCycleEnd?: boolean | number,
+) => Promise<RazorpaySubscriptionEntity>;
+
+export type RazorpayCancellationResult =
+  | {
+      ok: true;
+      billing: DashboardBilling;
+      cancelledExternally: boolean;
+      message: string;
+    }
+  | {
+      ok: false;
+      error: string;
+      message: string;
+    };
+
 export type BillingCountry = "IN" | "US" | "default";
 
 export type ResolvedUpgradePrice = {
@@ -629,6 +647,84 @@ export async function createRazorpaySubscription(
     name: row.user_name,
     email: row.user_email,
     plan: tier,
+  };
+}
+
+export async function cancelRazorpaySubscription(
+  userId: string,
+  options: { cancelSubscription?: CancelSubscription } = {},
+): Promise<RazorpayCancellationResult> {
+  const row = await findBillingRow({ id: userId });
+  if (!row) {
+    return {
+      ok: false,
+      error: "account_not_found",
+      message: "Authenticated GitFuse account was not found.",
+    };
+  }
+
+  const subscriptionId = row.razorpay_subscription_id?.trim() ?? "";
+  let subscriptionStatus: RazorpaySubscriptionStatus = "cancelled";
+  let currentPeriodEnd = toIso(row.current_period_end);
+  let cancelledExternally = false;
+
+  if (row.payment_provider === "razorpay" && subscriptionId) {
+    try {
+      const cancelSubscription =
+        options.cancelSubscription ??
+        ((id: string, cancelAtCycleEnd?: boolean | number) =>
+          getRazorpayClient().subscriptions.cancel(
+            id,
+            cancelAtCycleEnd,
+          ) as Promise<RazorpaySubscriptionEntity>);
+      const cancelled = await cancelSubscription(subscriptionId, false);
+      cancelledExternally = true;
+      const returnedStatus = normalizeSubscriptionStatus(cancelled.status);
+      subscriptionStatus =
+        returnedStatus && terminalStatuses.has(returnedStatus)
+          ? returnedStatus
+          : "cancelled";
+      currentPeriodEnd =
+        timestampToIso(cancelled.ended_at ?? cancelled.current_end) ??
+        currentPeriodEnd;
+    } catch (error) {
+      console.error("[billing] Razorpay subscription cancellation failed", {
+        subscriptionId: maskIdentifier(subscriptionId),
+        ...safeRazorpayError(error),
+      });
+      const description = safeRazorpayError(error).description;
+      return {
+        ok: false,
+        error: "razorpay_cancel_failed",
+        message:
+          description ??
+          "Razorpay subscription cancellation failed. Please try again.",
+      };
+    }
+  }
+
+  const sql = getSql();
+  await sql`
+    update plans
+    set tier = 'free',
+        requested_tier = 'free',
+        subscription_status = ${subscriptionStatus},
+        current_period_end = coalesce(
+          ${currentPeriodEnd},
+          current_period_end
+        ),
+        cancel_at_period_end = true,
+        updated_at = now()
+    where user_id = ${row.user_id}
+  `;
+
+  return {
+    ok: true,
+    billing: await getDashboardBilling({ id: row.user_id }),
+    cancelledExternally,
+    message: cancelledExternally
+      ? "Razorpay subscription cancelled. Your workspace is now on Free."
+      : "No Razorpay subscription id was present. Your workspace is now on Free.",
   };
 }
 
