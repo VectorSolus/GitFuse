@@ -1,39 +1,26 @@
 "use client";
 
-import { PLAN_LIMITS } from "@gitfuse/types/billing";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DashboardDataError } from "@/components/dashboard/data-error";
-import { useDashboardData, type DashboardData } from "@/hooks/use-dashboard-data";
+import { useDashboardData } from "@/hooks/use-dashboard-data";
 import {
   buildUsageMetrics,
   clampPercent,
-  formatBytes,
-  formatLimit,
   formatPercent,
   getUsageMetricPercent,
   type UsageMetricId,
 } from "@/lib/usage-metrics";
 
-const proFeatures = [
-  `${formatLimit(PLAN_LIMITS.pro.repos)} private repositories`,
-  `${formatLimit(PLAN_LIMITS.pro.devices)} trusted devices`,
-  `${PLAN_LIMITS.pro.historyDays} days sync history`,
-  `${formatBytes(PLAN_LIMITS.pro.bundleSizeBytes)} bundle size`,
-  `${formatBytes(PLAN_LIMITS.pro.storageTotalBytes)} relay storage`,
-];
-
 export default function UsagePage() {
   const { data, error, loading } = useDashboardData();
   const [selectedMetricId, setSelectedMetricId] =
     useState<UsageMetricId>("repositories");
-  const [billingOpen, setBillingOpen] = useState(false);
   const [isDetailListScrolling, setIsDetailListScrolling] = useState(false);
   const detailScrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
   const usageMetrics = useMemo(() => buildUsageMetrics(data), [data]);
-  const planFeatures = useMemo(() => buildPlanFeatures(data), [data]);
 
   const selectedMetric = useMemo(() => {
     return usageMetrics.find((metric) => metric.id === selectedMetricId);
@@ -233,128 +220,6 @@ export default function UsagePage() {
           ) : null}
         </aside>
       </section>
-
-      <section className="gf-usage-plan-grid">
-        <article className="gf-usage-plan-panel">
-          <div className="gf-usage-plan-panel-head">
-            <p className="gf-dash-eyebrow">Included now</p>
-            <h3>{titleCase(data?.billing.tier ?? "free")} workspace</h3>
-          </div>
-
-          <ul>
-            {planFeatures.map((feature) => (
-              <li key={feature}>{feature}</li>
-            ))}
-          </ul>
-        </article>
-
-        <article className="gf-usage-plan-panel gf-usage-plan-panel-pro">
-          <div className="gf-usage-plan-panel-head">
-            <p className="gf-dash-eyebrow">Upgrade option</p>
-            <h3>Pro workspace</h3>
-          </div>
-
-          <ul>
-            {proFeatures.map((feature) => (
-              <li key={feature}>{feature}</li>
-            ))}
-          </ul>
-        </article>
-      </section>
-
-      <section className="gf-usage-billing-strip">
-          <div>
-            <p className="gf-dash-eyebrow">Billing</p>
-          <strong>{titleCase(data?.billing.tier ?? "free")} tier active</strong>
-          <span>
-            Plan benefits follow the subscription state confirmed by Razorpay.
-          </span>
-        </div>
-
-        <button type="button" onClick={() => setBillingOpen(true)}>
-          View billing
-        </button>
-      </section>
-
-      {billingOpen ? (
-        <BillingModal onClose={() => setBillingOpen(false)} />
-      ) : null}
     </div>
   );
-}
-
-function BillingModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="gf-billing-modal" role="dialog" aria-modal="true">
-      <div className="gf-billing-modal-backdrop" onClick={onClose} />
-
-      <section className="gf-billing-modal-panel">
-        <button
-          type="button"
-          className="gf-billing-modal-close"
-          onClick={onClose}
-          aria-label="Close billing"
-        >
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M6 6l12 12M18 6L6 18"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-
-        <div className="gf-billing-modal-content">
-          <p className="gf-dash-eyebrow">Billing</p>
-          <h2>Manage your GitFuse workspace plan.</h2>
-          <span>
-            Razorpay Checkout manages subscription authorization. Signed
-            webhooks update account limits automatically.
-          </span>
-
-          <div className="gf-billing-plan-compare">
-            <article>
-              <p>Free</p>
-              <h3>$0</h3>
-              <ul>
-                <li>{formatLimit(PLAN_LIMITS.free.repos)} repositories</li>
-                <li>{formatLimit(PLAN_LIMITS.free.devices)} devices</li>
-                <li>{formatBytes(PLAN_LIMITS.free.storageTotalBytes)} relay storage</li>
-                <li>{PLAN_LIMITS.free.historyDays} days history</li>
-              </ul>
-            </article>
-
-            <article className="is-featured">
-              <p>Pro</p>
-              <h3>$9</h3>
-              <ul>
-                <li>{formatLimit(PLAN_LIMITS.pro.repos)} repositories</li>
-                <li>{formatLimit(PLAN_LIMITS.pro.devices)} trusted devices</li>
-                <li>{PLAN_LIMITS.pro.historyDays} days history</li>
-                <li>{formatBytes(PLAN_LIMITS.pro.bundleSizeBytes)} bundles</li>
-              </ul>
-
-              <button type="button">Continue later</button>
-            </article>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function titleCase(value: string) {
-  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
-}
-
-function buildPlanFeatures(data: DashboardData | null) {
-  const usage = data?.usage;
-  return [
-    `${formatLimit(usage?.repos.max ?? 5)} tracked repositories`,
-    `${formatLimit(usage?.devices.max ?? 2)} trusted devices`,
-    `${formatBytes(usage?.storage.maxBytes ?? 500 * 1024 * 1024)} relay storage`,
-    `${usage?.historyDays ?? 30} days sync history`,
-    `${formatBytes(usage?.bundleSize.maxBytes ?? 50 * 1024 * 1024)} bundle size`,
-  ];
 }
