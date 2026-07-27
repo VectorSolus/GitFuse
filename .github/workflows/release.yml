@@ -32,6 +32,11 @@ jobs:
       - name: Validate production relay URL
         run: scripts/validate-release-relay-url.sh
 
+      - name: Configure git identity for tests
+        run: |
+          git config --global user.name "GitFuse CI"
+          git config --global user.email "ci@gitfuse.dev"
+
       - name: Test CLI
         working-directory: apps/cli
         run: go test ./...
