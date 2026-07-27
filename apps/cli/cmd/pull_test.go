@@ -52,6 +52,7 @@ func TestPullImportsDevice2CommitAndFastForwards(t *testing.T) {
 	}
 	device2 := filepath.Join(restoreParent, relay.repo.DisplayName)
 	assertRestoredHead(t, device2, second)
+	configureTestGitIdentity(t, device2)
 
 	device2Commit := commitPullFile(t, device2, "device2.txt", "from device 2\n", "device 2 commit", time.Unix(3, 0))
 	device2Bundle := mustCreatePullBundle(t, device2, second)
@@ -1127,12 +1128,17 @@ func newPullGitRepo(t *testing.T, name, branch string) string {
 	repoPath := filepath.Join(t.TempDir(), name)
 	testGit(t, "", "init", repoPath)
 	testGit(t, repoPath, "checkout", "-b", branch)
-	testGit(t, repoPath, "config", "user.name", "gitfuse")
-	testGit(t, repoPath, "config", "user.email", "test@gitfuse.dev")
+	configureTestGitIdentity(t, repoPath)
 	if err := excludeGitfuseMetadata(repoPath); err != nil {
 		t.Fatal(err)
 	}
 	return repoPath
+}
+
+func configureTestGitIdentity(t *testing.T, repoPath string) {
+	t.Helper()
+	testGit(t, repoPath, "config", "user.email", "gitfuse-ci@example.com")
+	testGit(t, repoPath, "config", "user.name", "GitFuse CI")
 }
 
 func commitPullFile(t *testing.T, repoPath, name, content, message string, when time.Time) string {
