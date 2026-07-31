@@ -72,6 +72,8 @@ beforeEach(async () => {
   vi.resetModules();
   vi.unstubAllEnvs();
   vi.stubEnv("AUTH_SECRET", "test-secret");
+  vi.stubEnv("GITHUB_CLIENT_ID", "github-client");
+  vi.stubEnv("GITHUB_CLIENT_SECRET", "github-secret");
   vi.stubEnv("GOOGLE_CLIENT_ID", "google-client");
   vi.stubEnv("GOOGLE_CLIENT_SECRET", "google-secret");
   authState.config = null;
@@ -100,6 +102,7 @@ describe("Auth.js database callbacks", () => {
         sub: "google-user-1",
         name: "Piyush",
         email: "piyush@example.com",
+        email_verified: true,
       },
       user: {
         email: "piyush@example.com",
@@ -134,6 +137,7 @@ describe("Auth.js database callbacks", () => {
           sub: "google-user-1",
           name: "Piyush",
           email: "piyush@example.com",
+          email_verified: true,
         },
         user: {
           email: "piyush@example.com",
@@ -162,5 +166,72 @@ describe("Auth.js database callbacks", () => {
     });
     expect(token?.invalid).toBeUndefined();
     expect(token?.error).toBeUndefined();
+  });
+
+  it("uses canonical user ids in JWT sessions for every auth provider", async () => {
+    const credentialsToken = await authState.config?.callbacks.jwt({
+      token: {},
+      user: {
+        id: accountState.user.id,
+        email: accountState.user.email,
+      },
+      account: {
+        provider: "credentials",
+        providerAccountId: accountState.user.email,
+      },
+    });
+    const googleToken = await authState.config?.callbacks.jwt({
+      token: {},
+      user: {
+        email: accountState.user.email,
+      },
+      account: {
+        provider: "google",
+        providerAccountId: "google-user-1",
+      },
+    });
+    const githubToken = await authState.config?.callbacks.jwt({
+      token: {},
+      user: {
+        email: accountState.user.email,
+      },
+      account: {
+        provider: "github",
+        providerAccountId: "github-user-1",
+      },
+    });
+
+    expect(credentialsToken?.sub).toBe(accountState.user.id);
+    expect(googleToken?.sub).toBe(accountState.user.id);
+    expect(githubToken?.sub).toBe(accountState.user.id);
+  });
+
+  it("does not auto-link an unverified OAuth email to an existing account", async () => {
+    const consoleWarn = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+
+    const result = await authState.config?.callbacks.signIn({
+      account: {
+        provider: "google",
+        providerAccountId: "google-user-1",
+      },
+      profile: {
+        sub: "google-user-1",
+        name: "Piyush",
+        email: "piyush@example.com",
+        email_verified: false,
+      },
+      user: {
+        email: "piyush@example.com",
+      },
+    });
+
+    expect(result).toBe(false);
+    expect(accountState.upsertAccount).not.toHaveBeenCalled();
+    expect(consoleWarn).toHaveBeenCalledWith(
+      "[auth:google] verified email required for account linking: unverified_email",
+    );
+    consoleWarn.mockRestore();
   });
 });

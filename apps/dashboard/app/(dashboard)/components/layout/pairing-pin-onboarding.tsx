@@ -2,10 +2,16 @@
 
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { setPairingPinAction } from "@/app/(dashboard)/dashboard/settings/actions";
+import {
+  PAIRING_PIN_ONBOARDING_SKIP_KEY,
+  resolvePairingPinOnboardingStep,
+  skippedPairingPinOnboardingStep,
+  type PairingPinOnboardingStep,
+} from "@/lib/pairing-pin-onboarding-state";
 
 type PairingPinOnboardingProps = {
   needsPairingPin: boolean;
@@ -20,8 +26,8 @@ type FieldErrors = {
 export function PairingPinOnboarding({
   needsPairingPin,
 }: PairingPinOnboardingProps) {
-  const [step, setStep] = useState<"pin" | "saved" | "closed">(
-    needsPairingPin ? "pin" : "closed",
+  const [step, setStep] = useState<PairingPinOnboardingStep>(
+    needsPairingPin ? "checking" : "closed",
   );
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -29,7 +35,34 @@ export function PairingPinOnboarding({
   const [errors, setErrors] = useState<FieldErrors>({});
   const [pending, setPending] = useState(false);
 
-  if (step === "closed") return null;
+  useEffect(() => {
+    if (!needsPairingPin) {
+      try {
+        window.localStorage.removeItem(PAIRING_PIN_ONBOARDING_SKIP_KEY);
+      } catch {
+        // Ignore storage restrictions; account state still controls the PIN tile.
+      }
+      setStep("closed");
+      return;
+    }
+
+    let skippedInBrowser = false;
+    try {
+      skippedInBrowser =
+        window.localStorage.getItem(PAIRING_PIN_ONBOARDING_SKIP_KEY) === "1";
+    } catch {
+      skippedInBrowser = false;
+    }
+
+    setStep(
+      resolvePairingPinOnboardingStep({
+        needsPairingPin,
+        skippedInBrowser,
+      }),
+    );
+  }, [needsPairingPin]);
+
+  if (step === "closed" || step === "checking") return null;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -49,6 +82,11 @@ export function PairingPinOnboarding({
       setPin("");
       setConfirmPin("");
       setErrors({});
+      try {
+        window.localStorage.removeItem(PAIRING_PIN_ONBOARDING_SKIP_KEY);
+      } catch {
+        // Ignore storage restrictions; the saved account state closes onboarding.
+      }
       setStep("saved");
     } catch (error) {
       setErrors({
@@ -62,6 +100,19 @@ export function PairingPinOnboarding({
     }
   }
 
+  function handleSkip() {
+    setPin("");
+    setConfirmPin("");
+    setErrors({});
+    setPending(false);
+    try {
+      window.localStorage.setItem(PAIRING_PIN_ONBOARDING_SKIP_KEY, "1");
+    } catch {
+      // Ignore storage restrictions; this still skips for the current render.
+    }
+    setStep(skippedPairingPinOnboardingStep());
+  }
+
   return (
     <div className="gf-pin-onboarding-modal" role="dialog" aria-modal="true">
       <div className="gf-pin-onboarding-backdrop" />
@@ -71,7 +122,7 @@ export function PairingPinOnboarding({
           <p className="gf-dash-eyebrow">Device pairing PIN</p>
           <h2>Set your pairing PIN.</h2>
           <span>
-            This PIN links new CLI devices to your GitFuse account after sign-in.
+            This PIN enables PIN-based CLI device pairing when you use the PIN challenge.
           </span>
 
           <SecretInput
@@ -121,8 +172,17 @@ export function PairingPinOnboarding({
           <button type="submit" disabled={pending}>
             {pending ? "Saving..." : "Save pairing PIN"}
           </button>
+
+          <button
+            type="button"
+            className="gf-pin-onboarding-skip"
+            onClick={handleSkip}
+            disabled={pending}
+          >
+            Skip for now
+          </button>
         </form>
-      ) : (
+      ) : step === "saved" ? (
         <section className="gf-pin-onboarding-card gf-pin-onboarding-success">
           <p className="gf-dash-eyebrow">Pairing PIN saved</p>
           <h2>You are ready to pair devices.</h2>
@@ -136,6 +196,27 @@ export function PairingPinOnboarding({
               onClick={() => setStep("closed")}
             >
               Go to account settings &gt;
+            </Link>
+
+            <button type="button" onClick={() => setStep("closed")}>
+              Continue to dashboard
+            </button>
+          </div>
+        </section>
+      ) : (
+        <section className="gf-pin-onboarding-card gf-pin-onboarding-success">
+          <p className="gf-dash-eyebrow">Device pairing PIN</p>
+          <h2>You can set this later.</h2>
+          <span>
+            Set a pairing PIN from Settings &gt; Security when you want PIN-based CLI device pairing.
+          </span>
+
+          <div className="gf-pin-onboarding-actions">
+            <Link
+              href="/dashboard/settings?section=security"
+              onClick={() => setStep("closed")}
+            >
+              Open Security Settings
             </Link>
 
             <button type="button" onClick={() => setStep("closed")}>

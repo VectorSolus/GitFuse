@@ -1,5 +1,6 @@
 import "./test/env";
 
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,6 +28,7 @@ const baseEmails = [
   "cli-pair-first-time@example.com",
   "cli-pair-legacy@example.com",
   "cli-pair-relay-issued@example.com",
+  "cli-pair-browser-approved@example.com",
 ];
 
 async function ensurePairingSchema() {
@@ -273,6 +275,68 @@ describe("CLI pairing PIN auth", () => {
         {
           ipAddress: "203.0.113.20",
           deviceName: "Direct DB Mac",
+        },
+      ],
+    });
+  });
+
+  it("keeps browser-approved CLI auth separate from PIN-based cli-pair history", async () => {
+    const email = "cli-pair-browser-approved@example.com";
+    const user = await seedPairingUser(email, "Pairing123");
+    const sql = getSql();
+
+    await sql`
+      insert into devices (user_id, name, token_hash)
+      values (${user.id}, 'Browser-approved Mac', ${`browser-token-${randomUUID()}`})
+    `;
+
+    await expect(getPairingSecuritySummary(user.id)).resolves.toMatchObject({
+      pairingEvents: [],
+    });
+
+    await sql`
+      insert into pairing_attempts (
+        user_id,
+        email_attempted,
+        ip_address,
+        device_name,
+        success
+      )
+      values (
+        ${user.id},
+        ${email},
+        '203.0.113.70',
+        'Failed PIN Mac',
+        false
+      )
+    `;
+
+    await expect(getPairingSecuritySummary(user.id)).resolves.toMatchObject({
+      pairingEvents: [],
+    });
+
+    await sql`
+      insert into pairing_attempts (
+        user_id,
+        email_attempted,
+        ip_address,
+        device_name,
+        success
+      )
+      values (
+        ${user.id},
+        ${email},
+        '203.0.113.71',
+        'PIN-approved Mac',
+        true
+      )
+    `;
+
+    await expect(getPairingSecuritySummary(user.id)).resolves.toMatchObject({
+      pairingEvents: [
+        {
+          ipAddress: "203.0.113.71",
+          deviceName: "PIN-approved Mac",
         },
       ],
     });

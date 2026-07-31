@@ -41,9 +41,11 @@ async function getCurrentUser(): Promise<CurrentUser | null> {
   const session = await auth().catch(() => null);
   if (!session?.user || session.invalid) return null;
 
+  const sessionUserId = session.user.id?.trim() || null;
+  const sessionEmail = normalizeEmail(session.user.email ?? "");
   const user = await findDashboardAccountForSession({
-    id: session.user.id,
-    email: session.user.email,
+    id: sessionUserId,
+    email: sessionEmail || null,
   });
 
   return user

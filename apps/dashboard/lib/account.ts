@@ -20,6 +20,7 @@ type DashboardAccountInput = {
   providerAccountId?: string;
   username?: string;
   email: string;
+  emailVerified?: boolean;
   emailVerifiedAt?: string | null;
   passwordHash?: string | null;
 };
@@ -112,6 +113,10 @@ export async function upsertDashboardAccount(input: DashboardAccountInput) {
     input.githubUsername ??
     email.split("@")[0] ??
     "gitfuse-user";
+  const canLinkByEmail =
+    provider === "email" ||
+    input.emailVerified === true ||
+    Boolean(input.emailVerifiedAt);
 
   const sql = getSql();
   const [existingUser] = await sql<DashboardAccount[]>`
@@ -130,7 +135,7 @@ export async function upsertDashboardAccount(input: DashboardAccountInput) {
       and oauth_accounts.provider_account_id = ${providerAccountId}
     where oauth_accounts.user_id is not null
        or users.github_id = ${storedAccountId}
-       or lower(users.email) = lower(${email})
+       or (${canLinkByEmail} and lower(users.email) = lower(${email}))
     order by case
                when oauth_accounts.user_id is not null then 0
                when users.github_id = ${storedAccountId} then 1
@@ -325,11 +330,13 @@ export async function findDashboardAccountForSession(input: {
   email?: string | null;
 }) {
   if (input.id) {
-    return findDashboardAccountById(input.id);
+    const user = await findDashboardAccountById(input.id);
+    if (user) return user;
   }
 
   if (input.email) {
-    return findDashboardAccountByEmail(input.email);
+    const email = normalizeEmail(input.email);
+    if (email) return findDashboardAccountByEmail(email);
   }
 
   return null;

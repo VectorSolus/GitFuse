@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { Eye, EyeOff } from "lucide-react";
@@ -24,6 +24,10 @@ import {
   updateProfileAction,
   verifyEmailOtp,
 } from "./actions";
+import {
+  closedPairingPinRevealState,
+  PAIRING_PIN_REVEAL_TIMEOUT_MS,
+} from "@/lib/pairing-pin-reveal-state";
 
 type SettingsSection =
   | "Profile"
@@ -399,14 +403,28 @@ function SecuritySection({ security }: { security: PairingSecurityData }) {
   const currentPinRequired = security.pairingPinSet;
   const formReady = pinValid && pinsMatch && (!currentPinRequired || currentPin.trim().length > 0);
 
+  const closeRevealModal = useCallback(() => {
+    const cleanup = closedPairingPinRevealState();
+    setRevealOpen(cleanup.revealOpen);
+    setRevealOtp(cleanup.revealOtp);
+    setRevealedPin(cleanup.revealedPin);
+    setRevealFeedback(cleanup.revealFeedback);
+    setCurrentPin(cleanup.currentPin);
+  }, []);
+
   useEffect(() => {
-    if (!revealedPin) return undefined;
+    if (!revealOpen || !revealedPin) return undefined;
     const timeout = window.setTimeout(() => {
-      setRevealedPin("");
-    }, 30_000);
+      closeRevealModal();
+    }, PAIRING_PIN_REVEAL_TIMEOUT_MS);
 
     return () => window.clearTimeout(timeout);
-  }, [revealedPin]);
+  }, [closeRevealModal, revealOpen, revealedPin]);
+
+  useEffect(() => {
+    if (security.pairingPinSet) return;
+    closeRevealModal();
+  }, [closeRevealModal, security.pairingPinSet]);
 
   function toggleSecret(field: string) {
     setVisibleFields((current) => ({
@@ -445,6 +463,8 @@ function SecuritySection({ security }: { security: PairingSecurityData }) {
     setRevealPending(true);
     setRevealFeedback("");
     setRevealedPin("");
+    setRevealOtp("");
+    setCurrentPin("");
 
     try {
       const result = await requestPairingPinRevealOtpAction();
@@ -477,7 +497,6 @@ function SecuritySection({ security }: { security: PairingSecurityData }) {
         throw new Error(result.error ?? "Could not reveal your pairing PIN.");
       }
       setRevealedPin(result.pin);
-      setCurrentPin(result.pin);
       setRevealFeedback("Pairing PIN revealed for 30 seconds.");
     } catch (error) {
       setRevealFeedback(error instanceof Error ? error.message : "Could not reveal your pairing PIN.");
@@ -501,7 +520,7 @@ function SecuritySection({ security }: { security: PairingSecurityData }) {
         <div className="gf-settings-v3-panel-head">
           <div>
             <p className="gf-dash-eyebrow">Device pairing PIN</p>
-            <h3>{security.pairingPinSet ? "Pair new CLI devices" : "Set a pairing PIN"}</h3>
+            <h3>{security.pairingPinSet ? "Manage PIN-based CLI pairing" : "Set a pairing PIN"}</h3>
           </div>
 
           <em className={security.pairingPinSet ? "gf-pairing-pin-status is-set" : "gf-pairing-pin-status"}>
@@ -574,7 +593,7 @@ function SecuritySection({ security }: { security: PairingSecurityData }) {
 
         <div className="gf-pairing-events">
           <div className="gf-pairing-events-head">
-            <strong>Devices paired with this PIN</strong>
+            <strong>PIN-based device pairings</strong>
             <span>{security.pairingEvents.length} recorded</span>
           </div>
 
@@ -593,8 +612,9 @@ function SecuritySection({ security }: { security: PairingSecurityData }) {
             </div>
           ) : (
             <div className="gf-settings-v3-upcoming-card">
-              <strong>No PIN pairings yet.</strong>
-              <span>Successful CLI device pairings will appear here.</span>
+              <strong>No PIN-based pairings yet.</strong>
+              <span>Devices approved through browser sign-in appear on the Devices page.</span>
+              <Link href="/dashboard/devices">View connected devices</Link>
             </div>
           )}
         </div>
@@ -604,20 +624,14 @@ function SecuritySection({ security }: { security: PairingSecurityData }) {
         <div className="gf-pin-reveal-modal" role="dialog" aria-modal="true">
           <div
             className="gf-add-email-backdrop"
-            onClick={() => {
-              setRevealOpen(false);
-              setRevealedPin("");
-            }}
+            onClick={closeRevealModal}
           />
 
           <form className="gf-pin-reveal-card" onSubmit={handleRevealSubmit}>
             <button
               type="button"
               className="gf-add-email-close"
-              onClick={() => {
-                setRevealOpen(false);
-                setRevealedPin("");
-              }}
+              onClick={closeRevealModal}
               aria-label="Close PIN reveal"
             >
               <CloseIcon />

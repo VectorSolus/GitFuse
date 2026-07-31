@@ -13,10 +13,11 @@ import {
 } from "./account";
 import { authorizeEmailPassword } from "./auth-email";
 import {
+  githubVerifiedEmailScope,
   oauthEmailVerifiedAt,
   oauthSuccessfulSignInResult,
+  oauthVerifiedEmail,
 } from "./auth-oauth";
-import { normalizeEmail } from "./otp";
 
 const githubClientId = process.env.GITHUB_CLIENT_ID?.trim();
 const githubClientSecret = process.env.GITHUB_CLIENT_SECRET?.trim();
@@ -68,6 +69,7 @@ const providers = [
           authorization: {
             params: {
               prompt: "select_account",
+              scope: `read:user ${githubVerifiedEmailScope}`,
             },
           },
         }),
@@ -160,19 +162,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           : profileValue(profileRecord, "login") ||
             profileValue(profileRecord, "name");
 
-      const profileEmail =
-        user.email ?? profileValue(profileRecord, "email");
-      const email =
-        normalizeEmail(profileEmail) ||
-        (provider === "github" && providerAccountId
-          ? `${username || providerAccountId}@users.noreply.github.com`
-          : "");
-
-      if (!providerAccountId || !email || !username) {
+      if (!providerAccountId || !username) {
         return false;
       }
 
       return authDatabaseOperation("oauth-sign-in", async () => {
+        const verifiedEmail = await oauthVerifiedEmail({
+          provider,
+          profile: profileRecord,
+          userEmail: user.email,
+          accessToken:
+            typeof account.access_token === "string"
+              ? account.access_token
+              : null,
+        });
+
+        if (!verifiedEmail.ok) {
+          console.warn(
+            `[auth:${provider}] verified email required for account linking: ${verifiedEmail.reason}`,
+          );
+          return false;
+        }
+
+        const email = verifiedEmail.email;
         const existingUser =
           (await findDashboardAccountByProviderIdentity(
             provider,
@@ -184,8 +196,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           providerAccountId,
           username,
           email,
+          emailVerified: verifiedEmail.verified,
           emailVerifiedAt: oauthEmailVerifiedAt({
             provider,
+            emailVerified: verifiedEmail.verified,
             account: existingUser,
           }),
         });

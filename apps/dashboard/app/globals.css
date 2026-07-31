@@ -7901,6 +7901,19 @@ body {
   color: #abc2d6;
 }
 
+.gf-settings-v3-upcoming-card a {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0.8rem;
+  color: #7dd3fc;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.gf-settings-v3-upcoming-card a:hover {
+  color: white;
+}
+
 .gf-settings-v3-list {
   margin-top: 1rem;
   display: grid;
@@ -9616,6 +9629,13 @@ body {
   border: 0;
   color: #03101c;
   background: linear-gradient(135deg, #12b8de, #7dd3fc);
+}
+
+.gf-pin-onboarding-card > button.gf-pin-onboarding-skip {
+  margin-top: 0.75rem;
+  border: 1px solid rgba(125, 211, 252, 0.15);
+  color: #dff8ff;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .gf-pin-onboarding-card > button:disabled,
