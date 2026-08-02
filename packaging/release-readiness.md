@@ -16,7 +16,7 @@ gitfuse sync
 Windows:
 
 ```powershell
-winget install gitfuse
+winget install GitFuse.GitFuse
 gitfuse auth login
 gitfuse add .
 gitfuse sync
@@ -42,7 +42,7 @@ gitfuse sync
 ## External Publication Pending
 
 - Homebrew acceptance is required before `brew install gitfuse` works through standard discovery.
-- Winget acceptance is required before `winget install gitfuse` works through the default source.
+- Winget acceptance is required before `winget install GitFuse.GitFuse` works through the default source.
 - DNS and hosting must serve the exact reviewed `scripts/install.sh` at `https://install.gitfuse.dev`.
 - DNS and deployment must serve a verified production relay at `https://relay.gitfuse.dev`.
 - A real tagged GitHub release must be run after package-publication tokens and repository variables are configured.

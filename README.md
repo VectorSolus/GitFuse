@@ -151,7 +151,7 @@ gitfuse sync           (Cloudflare R2)            identical SHA
 
 ```zsh
 # Clone and install
-git clone https://github.com/gitfuse/gitfuse
+git clone https://github.com/VectorSolus/GitFuse
 cd gitfuse
 pnpm install
 

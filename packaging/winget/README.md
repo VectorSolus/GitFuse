@@ -3,7 +3,7 @@
 Public command:
 
 ```powershell
-winget install gitfuse
+winget install GitFuse.GitFuse
 ```
 
 This directory contains Winget template manifests for the Windows amd64 portable CLI archive:
@@ -20,4 +20,4 @@ This directory contains Winget template manifests for the Windows amd64 portable
 
 ## External Submission
 
-`winget install gitfuse` works through the default Winget source only after Microsoft community repository acceptance. Do not describe it as live before that acceptance and independent Windows amd64 verification.
+`winget install GitFuse.GitFuse` works through the default Winget source only after Microsoft community repository acceptance. Do not describe it as live before that acceptance and independent Windows amd64 verification.

@@ -5,7 +5,7 @@ These files prepare GitFuse distribution assets for local verification before an
 ## Launch Path
 
 1. Serve the curl installer at `https://gitfuse.dev/install.sh`.
-2. Publish a custom Homebrew tap at `gitfuse/homebrew-tap`.
+2. Publish a custom Homebrew tap at `VectorSolus/homebrew-tap`.
 3. Submit WinGet manifests to `microsoft/winget-pkgs`.
 4. Pursue official Homebrew later, after public adoption and stable release evidence.
 
@@ -13,14 +13,14 @@ User-facing commands once the matching public endpoints exist:
 
 ```sh
 curl -fsSL https://gitfuse.dev/install.sh | sh
-brew tap gitfuse/tap
+brew tap VectorSolus/tap
 brew install gitfuse
 winget install GitFuse.GitFuse
 ```
 
 ## Release Artifacts
 
-The distribution templates expect GitHub Releases under `https://github.com/gitfuse/gitfuse/releases`.
+The distribution templates expect GitHub Releases under `https://github.com/VectorSolus/GitFuse/releases`.
 
 Versioned archive convention:
 
@@ -36,8 +36,8 @@ gitfuse_<version>_windows_amd64.zip
 For example:
 
 ```text
-https://github.com/gitfuse/gitfuse/releases/download/v0.1.0/gitfuse_v0.1.0_linux_amd64.tar.gz
-https://github.com/gitfuse/gitfuse/releases/download/v0.1.0/gitfuse_v0.1.0_windows_amd64.zip
+https://github.com/VectorSolus/GitFuse/releases/download/v0.1.0/gitfuse_v0.1.0_linux_amd64.tar.gz
+https://github.com/VectorSolus/GitFuse/releases/download/v0.1.0/gitfuse_v0.1.0_windows_amd64.zip
 ```
 
 Each archive must have a matching SHA-256 file at the archive URL plus `.sha256`, for example:
@@ -49,7 +49,7 @@ gitfuse_v0.1.0_linux_amd64.tar.gz.sha256
 The root installer defaults to `GITFUSE_VERSION=latest` and uses this latest-release convention:
 
 ```text
-https://github.com/gitfuse/gitfuse/releases/latest/download/gitfuse_latest_<target>.tar.gz
+https://github.com/VectorSolus/GitFuse/releases/latest/download/gitfuse_latest_<target>.tar.gz
 ```
 
 Operators can render the expected URLs without network access:
@@ -76,7 +76,7 @@ bash scripts/distribution/check-distribution-presence.sh
 - Upload artifacts.
 - Upload `.sha256` files.
 - Verify `install.sh` against release.
-- Copy `packaging/homebrew/Formula/gitfuse.rb` to the `gitfuse/homebrew-tap` repository.
+- Copy `packaging/homebrew/Formula/gitfuse.rb` to the `VectorSolus/homebrew-tap` repository.
 - Replace Homebrew formula SHA values.
 - Run `brew audit`, `brew install`, and `brew test` locally.
 - Create WinGet manifests from the templates.
