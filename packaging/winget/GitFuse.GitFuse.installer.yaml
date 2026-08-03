@@ -7,7 +7,7 @@ Commands:
   - gitfuse
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/VectorSolus/GitFuse/releases/download/v0.1.0/gitfuse_v0.1.0_windows_amd64.zip
+    InstallerUrl: https://github.com/VectorSolus/GitFuse/releases/download/v0.1.0/gitfuse_0.1.0_windows_amd64.zip
     InstallerSha256: 1f389be9870ac2f378db1e1acfd400e308a51a39604176d5de8aee9d208c883a
     InstallerSwitches:
       Silent: ""

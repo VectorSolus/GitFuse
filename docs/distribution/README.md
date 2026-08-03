@@ -36,14 +36,14 @@ gitfuse_<version>_windows_amd64.zip
 For example:
 
 ```text
-https://github.com/VectorSolus/GitFuse/releases/download/v0.1.0/gitfuse_v0.1.0_linux_amd64.tar.gz
-https://github.com/VectorSolus/GitFuse/releases/download/v0.1.0/gitfuse_v0.1.0_windows_amd64.zip
+https://github.com/VectorSolus/GitFuse/releases/download/v0.1.0/gitfuse_0.1.0_linux_amd64.tar.gz
+https://github.com/VectorSolus/GitFuse/releases/download/v0.1.0/gitfuse_0.1.0_windows_amd64.zip
 ```
 
 Each archive must have a matching SHA-256 file at the archive URL plus `.sha256`, for example:
 
 ```text
-gitfuse_v0.1.0_linux_amd64.tar.gz.sha256
+gitfuse_0.1.0_linux_amd64.tar.gz.sha256
 ```
 
 The root installer defaults to `GITFUSE_VERSION=latest` and uses this latest-release convention:
