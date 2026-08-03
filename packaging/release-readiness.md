@@ -26,7 +26,7 @@ gitfuse sync
 Linux:
 
 ```sh
-curl -fsSL https://install.gitfuse.dev | sh
+curl -fsSL https://gitfuse.dev/install.sh | sh
 gitfuse auth login
 gitfuse add .
 gitfuse sync
@@ -44,7 +44,7 @@ gitfuse sync
 
 - The public macOS command uses the primary GitFuse repository tap.
 - Winget acceptance is required before `winget install GitFuse.GitFuse` works through the default source.
-- DNS and hosting must serve the exact reviewed `scripts/install.sh` at `https://install.gitfuse.dev`.
+- DNS and hosting must serve the exact reviewed `scripts/install.sh` at `https://gitfuse.dev/install.sh`.
 - DNS and deployment must serve a verified production relay at `https://relay.gitfuse.dev`.
 - A real tagged GitHub release must be run after package-publication tokens and repository variables are configured.
 

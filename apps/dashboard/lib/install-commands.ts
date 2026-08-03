@@ -26,12 +26,12 @@ export const INSTALL_GUIDES = {
     label: "Linux",
     shell: "bash / zsh",
     commands: [
-      "curl -fsSL https://install.gitfuse.dev | sh",
+      "curl -fsSL https://gitfuse.dev/install.sh | sh",
       "gitfuse auth login",
       "gitfuse add .",
       "gitfuse sync",
     ],
-    note: "Uses the canonical checksummed installer served from install.gitfuse.dev.",
+    note: "Uses the canonical checksummed installer served from gitfuse.dev/install.sh.",
   },
 } as const;
 

@@ -18,7 +18,7 @@ describe("install commands", () => {
       "gitfuse sync",
     ]);
     expect(INSTALL_GUIDES.linux.commands).toEqual([
-      "curl -fsSL https://install.gitfuse.dev | sh",
+      "curl -fsSL https://gitfuse.dev/install.sh | sh",
       "gitfuse auth login",
       "gitfuse add .",
       "gitfuse sync",
