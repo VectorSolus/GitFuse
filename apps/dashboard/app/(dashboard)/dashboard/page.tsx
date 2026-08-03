@@ -138,7 +138,8 @@ export default function DashboardOverviewPage() {
             <pre>
               <code>
                 <span className="gf-code-comment"># 1. Install the GitFuse CLI</span>
-                <span>brew install gitfuse</span>
+                <span>brew tap VectorSolus/gitfuse https://github.com/VectorSolus/GitFuse.git</span>
+                <span>brew install VectorSolus/gitfuse/gitfuse</span>
                 <span />
                 <span className="gf-code-comment"># 2. Link this device to your workspace</span>
                 <span>gitfuse auth login</span>

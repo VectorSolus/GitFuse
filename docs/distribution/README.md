@@ -13,8 +13,8 @@ User-facing commands once the matching public endpoints exist:
 
 ```sh
 curl -fsSL https://gitfuse.dev/install.sh | sh
-brew tap VectorSolus/tap
-brew install gitfuse
+brew tap VectorSolus/gitfuse https://github.com/VectorSolus/GitFuse.git
+brew install VectorSolus/gitfuse/gitfuse
 winget install GitFuse.GitFuse
 ```
 

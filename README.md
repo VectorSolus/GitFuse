@@ -27,7 +27,8 @@ gitfuse closes that gap. It moves your local commits through a private encrypted
 
 ```zsh
 # Install
-brew install gitfuse
+brew tap VectorSolus/gitfuse https://github.com/VectorSolus/GitFuse.git
+brew install VectorSolus/gitfuse/gitfuse
 
 # Register this device
 gitfuse auth login

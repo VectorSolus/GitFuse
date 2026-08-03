@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { Fragment } from "react";
 
 import { INSTALL_GUIDES, installCommandRows } from "@/lib/install-commands";
 
@@ -62,6 +63,7 @@ const sections = [
 
 const quickStartCommands = INSTALL_GUIDES.macos.commands.map((command, index) => ({
   label: [
+    "Add Homebrew tap",
     "Install the CLI",
     "Authenticate your device",
     "Track current repository",
@@ -72,15 +74,16 @@ const quickStartCommands = INSTALL_GUIDES.macos.commands.map((command, index) =>
 
 const installationCommands = installCommandRows().map((guide) => ({
   label: `${guide.label} install`,
-  command: guide.commands[0],
+  command:
+    guide.key === "macos" ? guide.commands.slice(0, 2).join("\n") : guide.commands[0],
 }));
 
 const commandGroups = [
   {
     id: "quick-start",
     eyebrow: "Quick start",
-    title: "Set up GitFuse in four commands.",
-    body: "Install the CLI, authenticate your device, add the current repository, and sync your first local commit bundle.",
+    title: "Set up GitFuse from your terminal.",
+    body: "Tap and install the CLI, authenticate your device, add the current repository, and sync your first local commit bundle.",
     commands: quickStartCommands,
   },
   {
@@ -472,7 +475,12 @@ export default function DocsPage() {
                     <span>{item.label}</span>
 
                     <code>
-                      <em>$</em> {item.command}
+                      {item.command.split("\n").map((line, index, lines) => (
+                        <Fragment key={`${line}-${index}`}>
+                          <em>$</em> {line}
+                          {index < lines.length - 1 ? <br /> : null}
+                        </Fragment>
+                      ))}
                     </code>
                   </div>
                 ))}

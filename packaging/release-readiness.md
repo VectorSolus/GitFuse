@@ -7,7 +7,8 @@ This repository prepares checksummed release artifacts and package-manager metad
 macOS:
 
 ```sh
-brew install gitfuse
+brew tap VectorSolus/gitfuse https://github.com/VectorSolus/GitFuse.git
+brew install VectorSolus/gitfuse/gitfuse
 gitfuse auth login
 gitfuse add .
 gitfuse sync
@@ -41,7 +42,7 @@ gitfuse sync
 
 ## External Publication Pending
 
-- Homebrew acceptance is required before `brew install gitfuse` works through standard discovery.
+- The public macOS command uses the primary GitFuse repository tap.
 - Winget acceptance is required before `winget install GitFuse.GitFuse` works through the default source.
 - DNS and hosting must serve the exact reviewed `scripts/install.sh` at `https://install.gitfuse.dev`.
 - DNS and deployment must serve a verified production relay at `https://relay.gitfuse.dev`.

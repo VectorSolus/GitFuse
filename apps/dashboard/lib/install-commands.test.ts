@@ -5,7 +5,8 @@ import { INSTALL_GUIDES, installCommandText } from "./install-commands";
 describe("install commands", () => {
   it("keeps the homepage and docs public install contract exact", () => {
     expect(INSTALL_GUIDES.macos.commands).toEqual([
-      "brew install gitfuse",
+      "brew tap VectorSolus/gitfuse https://github.com/VectorSolus/GitFuse.git",
+      "brew install VectorSolus/gitfuse/gitfuse",
       "gitfuse auth login",
       "gitfuse add .",
       "gitfuse sync",
@@ -26,7 +27,7 @@ describe("install commands", () => {
 
   it("renders command text from the same source", () => {
     expect(installCommandText("macos")).toBe(
-      "brew install gitfuse\ngitfuse auth login\ngitfuse add .\ngitfuse sync",
+      "brew tap VectorSolus/gitfuse https://github.com/VectorSolus/GitFuse.git\nbrew install VectorSolus/gitfuse/gitfuse\ngitfuse auth login\ngitfuse add .\ngitfuse sync",
     );
   });
 });

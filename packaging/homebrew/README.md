@@ -3,7 +3,8 @@
 Public command:
 
 ```sh
-brew install gitfuse
+brew tap VectorSolus/gitfuse https://github.com/VectorSolus/GitFuse.git
+brew install VectorSolus/gitfuse/gitfuse
 ```
 
 This repository includes Cask template metadata for the macOS release archives:
@@ -22,4 +23,4 @@ This repository includes Cask template metadata for the macOS release archives:
 
 ## External Submission
 
-`brew install gitfuse` works through standard discovery only after Homebrew publication or acceptance. A temporary tap may be used for internal release verification, but it is not the public installation command.
+Official Homebrew discovery remains separate from the public repository tap command above.

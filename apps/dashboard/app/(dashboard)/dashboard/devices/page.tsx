@@ -14,8 +14,12 @@ import {
 
 const setupSteps = [
   {
+    title: "Add Homebrew tap",
+    command: "brew tap VectorSolus/gitfuse https://github.com/VectorSolus/GitFuse.git",
+  },
+  {
     title: "Install GitFuse CLI",
-    command: "brew install gitfuse",
+    command: "brew install VectorSolus/gitfuse/gitfuse",
   },
   {
     title: "Authenticate this machine",

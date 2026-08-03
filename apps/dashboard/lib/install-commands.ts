@@ -3,12 +3,13 @@ export const INSTALL_GUIDES = {
     label: "macOS",
     shell: "zsh",
     commands: [
-      "brew install gitfuse",
+      "brew tap VectorSolus/gitfuse https://github.com/VectorSolus/GitFuse.git",
+      "brew install VectorSolus/gitfuse/gitfuse",
       "gitfuse auth login",
       "gitfuse add .",
       "gitfuse sync",
     ],
-    note: "Works on Apple Silicon and Intel Macs after Homebrew publication.",
+    note: "Uses the public GitFuse repository tap on Apple Silicon and Intel Macs.",
   },
   windows: {
     label: "Windows",
