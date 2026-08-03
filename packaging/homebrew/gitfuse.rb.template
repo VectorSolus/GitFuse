@@ -9,6 +9,7 @@ cask "gitfuse" do
   name "GitFuse"
   desc "Encrypted committed-git sync across devices"
   homepage "https://gitfuse.dev"
+  license "AGPL-3.0-only"
 
   binary "gitfuse"
 
