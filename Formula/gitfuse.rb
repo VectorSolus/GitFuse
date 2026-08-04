@@ -1,27 +1,27 @@
 class Gitfuse < Formula
   desc "Sync committed git objects between trusted devices through an encrypted relay"
   homepage "https://gitfuse.dev"
-  version "0.1.0"
+  version "0.1.1"
   license "AGPL-3.0-only"
 
-  # Template for VectorSolus/homebrew-tap. Replace every TODO SHA value after real v0.1.0 release artifacts are published.
+  # Template for VectorSolus/homebrew-tap. Replace every TODO SHA value after real v0.1.1 release artifacts are published.
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/VectorSolus/GitFuse/releases/download/v#{version}/gitfuse_#{version}_darwin_arm64.tar.gz"
-      sha256 "c3bdc15bc0c7c4341e25a87ba85ad877c3aee475336b6c070cc9e3bc60a9561e"
+      sha256 "d428507c42b45305811b5ecd1e0c4d79606b791d7a4e2f243e49da836c56dbb9"
     else
       url "https://github.com/VectorSolus/GitFuse/releases/download/v#{version}/gitfuse_#{version}_darwin_amd64.tar.gz"
-      sha256 "23f9417b73551020ca3a52c456f6ddb7c361bd68ec17e9e998a01268b1aaa82c"
+      sha256 "6f09e617c35c1b311088cd823a14d7d85fa15d2365a32e5f4357daa5c32a2c21"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
       url "https://github.com/VectorSolus/GitFuse/releases/download/v#{version}/gitfuse_#{version}_linux_arm64.tar.gz"
-      sha256 "3f2b24efe00bdac4cff40808e7236f8ab07b37b36ef905dcad0288c847a4dcfd"
+      sha256 "f4d18c41486b668af3431cb125951877d96b80e2d42ce28ef312e681952a8556"
     else
       url "https://github.com/VectorSolus/GitFuse/releases/download/v#{version}/gitfuse_#{version}_linux_amd64.tar.gz"
-      sha256 "3221d497096e6f6064ba39289f601f07ea6257645307e1ddc3e0e285490e22ef"
+      sha256 "ff73569d8ed63979f67e2372580cce8e42503a3142fed84e4f06c4d2820c20ad"
     end
   end
 
