@@ -9,11 +9,5 @@ Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/VectorSolus/GitFuse/releases/download/v0.1.1/gitfuse_0.1.1_windows_amd64.zip
     InstallerSha256: 2cc89bdc01322c851254cf23b92c52d4b6b054207fc27ffef2f7d18962a8c6ca
-    InstallerSwitches:
-      Silent: ""
-      SilentWithProgress: ""
-    InstallerSwitches:
-      Silent: ""
-      SilentWithProgress: ""
 ManifestType: installer
 ManifestVersion: 1.9.0
