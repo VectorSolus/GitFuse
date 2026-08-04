@@ -16,6 +16,68 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func TestDashboardBaseURLDefaultsToProduction(t *testing.T) {
+	t.Setenv("GITFUSE_DASHBOARD_URL", "")
+
+	if got := dashboardBaseURL(); got != "https://gitfuse.dev" {
+		t.Fatalf("dashboardBaseURL() = %q, want https://gitfuse.dev", got)
+	}
+}
+
+func TestDashboardBaseURLSupportsLocalOverride(t *testing.T) {
+	t.Setenv("GITFUSE_DASHBOARD_URL", "http://localhost:3000/")
+
+	if got := dashboardBaseURL(); got != "http://localhost:3000" {
+		t.Fatalf("dashboardBaseURL() = %q, want http://localhost:3000", got)
+	}
+}
+
+func TestDashboardEndpointJoinsCliPairToProductionDefault(t *testing.T) {
+	t.Setenv("GITFUSE_DASHBOARD_URL", "")
+
+	got := dashboardEndpoint("/api/auth/cli-pair")
+	if got != "https://gitfuse.dev/api/auth/cli-pair" {
+		t.Fatalf("dashboardEndpoint(cli-pair) = %q", got)
+	}
+}
+
+func TestDashboardAuthPathsDoNotDefaultToLocalhost(t *testing.T) {
+	t.Setenv("GITFUSE_AUTH_URL", "")
+	t.Setenv("GITFUSE_DASHBOARD_URL", "")
+
+	for _, got := range []string{
+		dashboardEndpoint("/api/auth/cli-pair"),
+		dashboardEndpoint("/api/auth/cli-otp/request"),
+		dashboardEndpoint("/api/auth/cli-otp/verify"),
+		authApprovalBaseURL(),
+	} {
+		if strings.Contains(got, "localhost:3000") {
+			t.Fatalf("auth URL defaulted to localhost: %q", got)
+		}
+	}
+}
+
+func TestAuthApprovalBaseURLPrecedence(t *testing.T) {
+	t.Setenv("GITFUSE_DASHBOARD_URL", "http://localhost:3000/")
+	t.Setenv("GITFUSE_AUTH_URL", "https://auth.example.test/cli-auth/")
+
+	if got := authApprovalBaseURL(); got != "https://auth.example.test/cli-auth" {
+		t.Fatalf("authApprovalBaseURL() = %q, want GITFUSE_AUTH_URL override", got)
+	}
+	if got := dashboardEndpoint("/api/auth/cli-pair"); got != "http://localhost:3000/api/auth/cli-pair" {
+		t.Fatalf("dashboardEndpoint(cli-pair) = %q, want GITFUSE_DASHBOARD_URL override", got)
+	}
+}
+
+func TestAuthApprovalBaseURLUsesDashboardDefault(t *testing.T) {
+	t.Setenv("GITFUSE_AUTH_URL", "")
+	t.Setenv("GITFUSE_DASHBOARD_URL", "")
+
+	if got := authApprovalBaseURL(); got != "https://gitfuse.dev/cli-auth" {
+		t.Fatalf("authApprovalBaseURL() = %q, want production dashboard auth URL", got)
+	}
+}
+
 func TestAuthEmailOTPFallbackStoresCredentialsWithoutBrowser(t *testing.T) {
 	var otpRequested bool
 	var otpVerified bool

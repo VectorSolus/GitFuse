@@ -24,6 +24,8 @@ type authOptions struct {
 	code     string
 }
 
+const defaultDashboardBaseURL = "https://gitfuse.dev"
+
 var authOpts authOptions
 
 var authCmd = &cobra.Command{
@@ -147,15 +149,7 @@ func runOAuthAuth(ctx context.Context, cmd *cobra.Command, opts authOptions) err
 		return err
 	}
 	relayURL := resolvedRelay.URL
-	approvalBase := os.Getenv("GITFUSE_AUTH_URL")
-	if approvalBase == "" {
-		dashboardURL := strings.TrimRight(os.Getenv("GITFUSE_DASHBOARD_URL"), "/")
-		if dashboardURL == "" {
-			dashboardURL = "http://localhost:3000"
-		}
-		approvalBase = dashboardURL + "/cli-auth"
-	}
-	approvalBase = strings.TrimRight(approvalBase, "/")
+	approvalBase := authApprovalBaseURL()
 	deviceName, _ := os.Hostname()
 	if deviceName == "" {
 		deviceName = "gitfuse-device"
@@ -457,7 +451,7 @@ func postDashboardJSON(ctx context.Context, path string, payload any, out any) (
 	if err != nil {
 		return 0, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, dashboardBaseURL()+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, dashboardEndpoint(path), bytes.NewReader(body))
 	if err != nil {
 		return 0, err
 	}
@@ -477,10 +471,23 @@ func postDashboardJSON(ctx context.Context, path string, payload any, out any) (
 }
 
 func dashboardBaseURL() string {
-	if base := os.Getenv("GITFUSE_DASHBOARD_URL"); base != "" {
+	if base := strings.TrimSpace(os.Getenv("GITFUSE_DASHBOARD_URL")); base != "" {
 		return strings.TrimRight(base, "/")
 	}
-	return "http://localhost:3000"
+	return defaultDashboardBaseURL
+}
+
+func dashboardEndpoint(path string) string {
+	return dashboardBaseURL() + path
+}
+
+func authApprovalBaseURL() string {
+	// GITFUSE_AUTH_URL is a legacy full approval URL override. Dashboard API
+	// calls use GITFUSE_DASHBOARD_URL so local pairing can point at one server.
+	if base := strings.TrimSpace(os.Getenv("GITFUSE_AUTH_URL")); base != "" {
+		return strings.TrimRight(base, "/")
+	}
+	return dashboardEndpoint("/cli-auth")
 }
 
 func currentDeviceInfo() (string, string, error) {
