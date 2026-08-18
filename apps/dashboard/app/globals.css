@@ -188,6 +188,22 @@ select {
   transform: translateY(-1px);
 }
 
+.gf-header-github-link {
+  grid-column: 3;
+  justify-self: end;
+  color: #9fc4dc;
+  font-size: 0.86rem;
+  font-weight: 700;
+  transition:
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.gf-header-github-link:hover {
+  color: white;
+  transform: translateY(-1px);
+}
+
 .gf-header-actions {
   display: flex;
   align-items: center;
@@ -795,15 +811,22 @@ select {
     height: auto;
     min-height: 64px;
     border-radius: 1.5rem;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 0.75rem;
     padding: 0.9rem;
   }
 
   .gf-nav {
-    grid-column: 1;
+    grid-column: 1 / -1;
+    grid-row: 2;
     width: 100%;
     justify-content: center;
     overflow-x: auto;
+  }
+
+  .gf-header-github-link {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .gf-header-actions {
@@ -833,6 +856,10 @@ select {
 
   .gf-nav a {
     padding: 0.55rem 0.7rem;
+    font-size: 0.8rem;
+  }
+
+  .gf-header-github-link {
     font-size: 0.8rem;
   }
 
@@ -2294,48 +2321,78 @@ select {
   overflow: hidden;
 }
 
-.gf-auth-logo-stack {
+.gf-provider-stack {
   position: relative;
-  width: 2.8rem;
-  height: 1.65rem;
-  flex: 0 0 2.8rem;
+  width: 3.45rem;
+  height: 2rem;
+  flex: 0 0 3.45rem;
 }
 
-.gf-auth-logo {
+.gf-provider-orb {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 1.55rem;
-  height: 1.55rem;
-  margin: -0.775rem 0 0 -0.775rem;
-  border: 1px solid rgba(2, 16, 26, 0.18);
+  width: 1.9rem;
+  height: 1.9rem;
+  margin: -0.95rem 0 0 -0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 50%;
-  color: #02101a;
-  background: rgba(234, 248, 255, 0.96);
-  box-shadow: 0 3px 10px rgba(2, 8, 23, 0.2);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.72rem;
+  overflow: hidden;
+  font-size: 0.92rem;
   font-weight: 900;
-  animation: gf-auth-logo-cycle 12s ease-in-out infinite;
+  animation: gf-provider-orb-cycle 12s ease-in-out infinite;
   will-change: transform, filter, opacity;
 }
 
-.gf-auth-logo svg {
-  width: 0.95rem;
-  height: 0.95rem;
+.gf-provider-orb svg {
+  width: 1.08rem;
+  height: 1.08rem;
 }
 
-.gf-auth-logo-google {
+.gf-provider-orb--github {
+  color: white;
+  background: linear-gradient(145deg, #a855f7, #6d28d9 66%, #3b0764);
+  box-shadow:
+    0 0 15px rgba(168, 85, 247, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+.gf-provider-orb--google {
+  border-color: rgba(255, 255, 255, 0.82);
+  background: #f8fbff;
+  box-shadow:
+    0 0 14px rgba(66, 133, 244, 0.38),
+    inset 0 1px 0 white;
   animation-delay: -8s;
 }
 
-.gf-auth-logo-mail {
+.gf-provider-orb--google > span {
+  color: transparent;
+  background: linear-gradient(
+    135deg,
+    #4285f4 12%,
+    #34a853 38%,
+    #fbbc05 62%,
+    #ea4335 86%
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gf-provider-orb--mail {
+  color: white;
+  background: linear-gradient(145deg, #22d3ee, #2563eb 48%, #ec4899);
+  box-shadow:
+    0 0 15px rgba(37, 99, 235, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
   animation-delay: -4s;
 }
 
-@keyframes gf-auth-logo-cycle {
+@keyframes gf-provider-orb-cycle {
   0%,
   28%,
   100% {
@@ -2348,44 +2405,44 @@ select {
   33%,
   61% {
     z-index: 1;
-    opacity: 0.58;
-    filter: blur(0.45px);
-    transform: translateX(0.78rem) scale(0.78);
+    opacity: 0.68;
+    filter: blur(0.55px) saturate(0.82);
+    transform: translateX(0.96rem) scale(0.76);
   }
 
   66%,
   94% {
     z-index: 1;
-    opacity: 0.58;
-    filter: blur(0.45px);
-    transform: translateX(-0.78rem) scale(0.78);
+    opacity: 0.68;
+    filter: blur(0.55px) saturate(0.82);
+    transform: translateX(-0.96rem) scale(0.76);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .gf-auth-logo {
+  .gf-provider-orb {
     animation: none;
   }
 
-  .gf-auth-logo-github {
+  .gf-provider-orb--github {
     z-index: 3;
     opacity: 1;
     filter: none;
     transform: translateX(0) scale(1);
   }
 
-  .gf-auth-logo-google {
+  .gf-provider-orb--google {
     z-index: 1;
-    opacity: 0.58;
-    filter: blur(0.45px);
-    transform: translateX(-0.78rem) scale(0.78);
+    opacity: 0.68;
+    filter: blur(0.55px) saturate(0.82);
+    transform: translateX(-0.96rem) scale(0.76);
   }
 
-  .gf-auth-logo-mail {
+  .gf-provider-orb--mail {
     z-index: 1;
-    opacity: 0.58;
-    filter: blur(0.45px);
-    transform: translateX(0.78rem) scale(0.78);
+    opacity: 0.68;
+    filter: blur(0.55px) saturate(0.82);
+    transform: translateX(0.96rem) scale(0.76);
   }
 }
 

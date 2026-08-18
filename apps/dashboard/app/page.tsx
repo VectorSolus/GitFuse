@@ -96,6 +96,14 @@ export default function HomePage() {
           <a href="#install">Install</a>
         </nav>
 
+        <a
+          href="https://github.com/VectorSolus/GitFuse"
+          className="gf-header-github-link"
+          target="_blank"
+          rel="noreferrer"
+        >
+          View GitHub
+        </a>
       </header>
 
       <section className="gf-hero">
@@ -154,8 +162,8 @@ export default function HomePage() {
             >
               <span>Sign in</span>
 
-              <span className="gf-auth-logo-stack" aria-hidden="true">
-                <span className="gf-auth-logo gf-auth-logo-github">
+              <span className="gf-provider-stack" aria-hidden="true">
+                <span className="gf-provider-orb gf-provider-orb--github">
                   <svg viewBox="0 0 24 24" width="19" height="19">
                     <path
                       fill="currentColor"
@@ -163,8 +171,12 @@ export default function HomePage() {
                     />
                   </svg>
                 </span>
-                <span className="gf-auth-logo gf-auth-logo-google">G</span>
-                <span className="gf-auth-logo gf-auth-logo-mail">M</span>
+                <span className="gf-provider-orb gf-provider-orb--google">
+                  <span>G</span>
+                </span>
+                <span className="gf-provider-orb gf-provider-orb--mail">
+                  <span>M</span>
+                </span>
               </span>
             </a>
 
