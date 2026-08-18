@@ -10486,3 +10486,41 @@ body {
   font-size: 60px;
   letter-spacing: -0.01em;
 }
+
+/* Phase62 dashboard hero typography normalization
+   Keep all dashboard app hero headlines visually consistent. */
+
+.gf-dash-main :is(
+  .gf-dash-hero-card,
+  .gf-dash-welcome-card,
+  .gf-repos-hero,
+  .gf-repos-hero-v3,
+  .gf-devices-hero,
+  .gf-history-hero,
+  .gf-usage-hero,
+  .gf-settings-hero-v2,
+  .gf-upgrade-hero
+) h2 {
+  font-size: 60px !important;
+  line-height: 0.95 !important;
+  letter-spacing: -0.01em !important;
+}
+
+/* Keep the same dashboard hero typography even where older mobile rules exist. */
+@media (max-width: 760px) {
+  .gf-dash-main :is(
+    .gf-dash-hero-card,
+    .gf-dash-welcome-card,
+    .gf-repos-hero,
+    .gf-repos-hero-v3,
+    .gf-devices-hero,
+    .gf-history-hero,
+    .gf-usage-hero,
+    .gf-settings-hero-v2,
+    .gf-upgrade-hero
+  ) h2 {
+    font-size: 60px !important;
+    line-height: 0.95 !important;
+    letter-spacing: -0.01em !important;
+  }
+}
