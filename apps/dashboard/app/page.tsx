@@ -98,11 +98,27 @@ export default function HomePage() {
 
         <a
           href="https://github.com/VectorSolus/GitFuse"
-          className="gf-header-github-link"
+          className="gf-header-github-link gf-github-link"
           target="_blank"
           rel="noreferrer"
         >
-          View GitHub
+          <span className="gf-github-link-text">View GitHub</span>
+          <svg
+            className="gf-github-link-arrow"
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path
+              d="M5 11 11 5M6.5 5H11v4.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="2 1.4"
+            />
+          </svg>
         </a>
       </header>
 

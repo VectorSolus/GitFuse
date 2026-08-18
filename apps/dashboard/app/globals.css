@@ -191,17 +191,53 @@ select {
 .gf-header-github-link {
   grid-column: 3;
   justify-self: end;
-  color: #9fc4dc;
   font-size: 0.86rem;
   font-weight: 700;
+}
+
+.gf-github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #5ecbff;
+  white-space: nowrap;
   transition:
     color 180ms ease,
     transform 180ms ease;
 }
 
-.gf-header-github-link:hover {
-  color: white;
+.gf-github-link-text {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 6px;
+}
+
+.gf-github-link-arrow {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: none;
+  overflow: visible;
+  transition: transform 180ms ease;
+}
+
+.gf-github-link:hover,
+.gf-github-link:focus-visible {
+  color: #b7ebff;
+}
+
+.gf-github-link:hover {
   transform: translateY(-1px);
+}
+
+.gf-github-link:hover .gf-github-link-arrow {
+  transform: translate(1px, -1px);
+}
+
+.gf-github-link:focus-visible {
+  border-radius: 0.35rem;
+  outline: 2px solid rgba(94, 203, 255, 0.72);
+  outline-offset: 5px;
 }
 
 .gf-header-actions {
