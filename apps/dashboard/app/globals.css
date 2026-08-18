@@ -131,9 +131,9 @@ select {
   width: min(1180px, calc(100% - 32px));
   height: 72px;
   transform: translateX(-50%);
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 1.5rem;
   padding: 0 1rem 0 1.35rem;
   border: 1px solid var(--gf-border);
@@ -146,6 +146,7 @@ select {
 }
 
 .gf-logo {
+  justify-self: start;
   font-size: 1.05rem;
   font-weight: 800;
   letter-spacing: -0.04em;
@@ -158,6 +159,8 @@ select {
 }
 
 .gf-nav {
+  grid-column: 2;
+  justify-self: center;
   display: flex;
   align-items: center;
   gap: 0.25rem;
@@ -792,12 +795,12 @@ select {
     height: auto;
     min-height: 64px;
     border-radius: 1.5rem;
-    flex-wrap: wrap;
+    grid-template-columns: minmax(0, 1fr);
     padding: 0.9rem;
   }
 
   .gf-nav {
-    order: 3;
+    grid-column: 1;
     width: 100%;
     justify-content: center;
     overflow-x: auto;
@@ -2268,9 +2271,9 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.7rem;
+  gap: 0.8rem;
   min-height: 3.25rem;
-  padding: 0 1.45rem;
+  padding: 0 1.25rem 0 1.45rem;
   border-radius: 999px;
   color: #02101a;
   background: linear-gradient(135deg, var(--gf-blue), var(--gf-blue-3));
@@ -2287,42 +2290,103 @@ select {
   box-shadow: 0 0 64px rgba(18, 184, 222, 0.42);
 }
 
-.gf-github-signin-button svg {
-  width: 1.18rem;
-  height: 1.18rem;
+.gf-auth-primary {
+  overflow: hidden;
 }
 
-.gf-hero-auth-shortcuts {
+.gf-auth-logo-stack {
+  position: relative;
+  width: 2.8rem;
+  height: 1.65rem;
+  flex: 0 0 2.8rem;
+}
+
+.gf-auth-logo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.55rem;
+  height: 1.55rem;
+  margin: -0.775rem 0 0 -0.775rem;
+  border: 1px solid rgba(2, 16, 26, 0.18);
+  border-radius: 50%;
+  color: #02101a;
+  background: rgba(234, 248, 255, 0.96);
+  box-shadow: 0 3px 10px rgba(2, 8, 23, 0.2);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.65rem;
-}
-
-.gf-auth-icon-button {
-  width: 3.25rem;
-  min-width: 3.25rem;
-  height: 3.25rem;
-  border: 1px solid var(--gf-border);
-  border-radius: 999px;
-  color: white;
-  background: rgba(255, 255, 255, 0.055);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1rem;
+  font-size: 0.72rem;
   font-weight: 900;
-  transition:
-    transform 180ms ease,
-    border-color 180ms ease,
-    background 180ms ease;
+  animation: gf-auth-logo-cycle 12s ease-in-out infinite;
+  will-change: transform, filter, opacity;
 }
 
-.gf-auth-icon-button:hover {
-  transform: translateY(-2px);
-  border-color: var(--gf-border-strong);
-  background: rgba(18, 184, 222, 0.1);
+.gf-auth-logo svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.gf-auth-logo-google {
+  animation-delay: -8s;
+}
+
+.gf-auth-logo-mail {
+  animation-delay: -4s;
+}
+
+@keyframes gf-auth-logo-cycle {
+  0%,
+  28%,
+  100% {
+    z-index: 3;
+    opacity: 1;
+    filter: blur(0);
+    transform: translateX(0) scale(1);
+  }
+
+  33%,
+  61% {
+    z-index: 1;
+    opacity: 0.58;
+    filter: blur(0.45px);
+    transform: translateX(0.78rem) scale(0.78);
+  }
+
+  66%,
+  94% {
+    z-index: 1;
+    opacity: 0.58;
+    filter: blur(0.45px);
+    transform: translateX(-0.78rem) scale(0.78);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gf-auth-logo {
+    animation: none;
+  }
+
+  .gf-auth-logo-github {
+    z-index: 3;
+    opacity: 1;
+    filter: none;
+    transform: translateX(0) scale(1);
+  }
+
+  .gf-auth-logo-google {
+    z-index: 1;
+    opacity: 0.58;
+    filter: blur(0.45px);
+    transform: translateX(-0.78rem) scale(0.78);
+  }
+
+  .gf-auth-logo-mail {
+    z-index: 1;
+    opacity: 0.58;
+    filter: blur(0.45px);
+    transform: translateX(0.78rem) scale(0.78);
+  }
 }
 
 @media (max-width: 620px) {
@@ -2338,12 +2402,6 @@ select {
   .gf-hero-email-form button {
     width: 3rem;
     height: 3rem;
-  }
-
-  .gf-hero-auth-shortcuts {
-    width: 100%;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 3.25rem 3.25rem;
   }
 
   .gf-github-signin-button {
