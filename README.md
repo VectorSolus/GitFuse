@@ -21,6 +21,8 @@ Every git commit lives only on the machine it was made on — until you push. If
 
 gitfuse closes that gap. It moves your local commits through a private encrypted relay so you can continue exactly where you left off on any machine, without ever touching your remote history.
 
+GitFuse is launching as Free Early Access. Pro and Team plans are visible for planning only and are Coming Soon.
+
 ---
 
 ## Quick start
@@ -128,16 +130,18 @@ gitfuse sync           (Cloudflare R2)            identical SHA
 | Bundle storage | Cloudflare R2 (zero egress fees) |
 | Database | PostgreSQL via Supabase |
 | Dashboard | Next.js 14, shadcn/ui, NextAuth v5 |
-| Billing | Stripe |
+| Billing | Razorpay infrastructure, deferred for Free Early Access |
 | Email | Resend |
 
 ---
 
 ## Plans
 
+GitFuse is available as Free Early Access. Paid checkout is not available during this launch mode; Pro and Team remain Coming Soon.
+
 | | Free | Pro | Team | Enterprise |
 |---|---|---|---|---|
-| Price | $0 | $9/mo | $18/user/mo | Custom |
+| Price | $0 Free Early Access | Coming Soon | Coming Soon | Custom |
 | Repositories | 5 | Unlimited | Unlimited | Unlimited |
 | Devices | 3 | Unlimited | Unlimited | Custom |
 | History | 30 days | 1 year | 1 year | Custom |

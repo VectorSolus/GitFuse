@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { ComponentType, FormEvent } from "react";
 
 import { INSTALL_GUIDES, type InstallGuideKey } from "@/lib/install-commands";
+import { EARLY_ACCESS_COPY, EARLY_ACCESS_PLAN_CARDS } from "@/lib/launch-mode";
 
 const SoftAurora = dynamic(() => import("@/components/effects/SoftAurora"), {
   ssr: false,
@@ -97,7 +98,7 @@ export default function HomePage() {
 
         <div className="gf-header-actions">
           <a href="/login" className="gf-primary-small">
-            Start free
+            {EARLY_ACCESS_COPY.freeCta}
           </a>
         </div>
       </header>
@@ -105,7 +106,7 @@ export default function HomePage() {
       <section className="gf-hero">
         <div className="gf-pill">
           <span className="gf-pill-dot" />
-          Open source · CLI-first · private commit sync
+          {EARLY_ACCESS_COPY.availability} · CLI-first · private commit sync
         </div>
 
         <h1>
@@ -115,8 +116,8 @@ export default function HomePage() {
 
         <p className="gf-hero-subtitle">
           Sync local Git commits across every device without pushing messy WIP
-          work to GitHub. Pick up exactly where you left off with a polished,
-          private, ocean-blue developer workflow.
+          work to GitHub. GitFuse is available as Free Early Access while Pro
+          and Team plans are Coming Soon.
         </p>
 
         <div className="gf-hero-cta-stack">
@@ -268,53 +269,41 @@ export default function HomePage() {
       <section id="pricing" className="gf-section">
         <div className="gf-section-heading">
           <p>Pricing</p>
-          <h2>Simple pricing for individuals and teams.</h2>
+          <h2>Free Early Access now. Paid plans are Coming Soon.</h2>
         </div>
 
         <div className="gf-pricing-grid">
-          <article className="gf-plan">
-            <p>Free</p>
-            <h3>$0</h3>
-            <span>For individual developers getting started.</span>
+          {EARLY_ACCESS_PLAN_CARDS.map((plan) => (
+            <article
+              key={plan.tier}
+              className={`gf-plan ${
+                plan.highlighted ? "gf-plan-featured" : ""
+              }`}
+            >
+              {plan.highlighted ? (
+                <div className="gf-popular">{plan.availability}</div>
+              ) : null}
 
-            <ul>
-              <li>3 devices</li>
-              <li>5 repositories</li>
-              <li>30-day sync history</li>
-            </ul>
+              <p>{plan.name}</p>
+              <h3>{plan.priceLabel}</h3>
+              <span className="gf-plan-availability">{plan.availability}</span>
+              <span>{plan.description}</span>
 
-            <a href="/login">Start free</a>
-          </article>
+              <ul>
+                {plan.features.map((feature) => (
+                  <li key={feature}>{feature}</li>
+                ))}
+              </ul>
 
-          <article className="gf-plan gf-plan-featured">
-            <div className="gf-popular">Popular</div>
-
-            <p>Pro</p>
-            <h3>$9/mo</h3>
-            <span>For developers working across several machines daily.</span>
-
-            <ul>
-              <li>Unlimited devices</li>
-              <li>Unlimited repositories</li>
-              <li>Priority relay speed</li>
-            </ul>
-
-            <a href="/login">Start Pro</a>
-          </article>
-
-          <article className="gf-plan">
-            <p>Team</p>
-            <h3>$18/user</h3>
-            <span>For teams that need visibility and access controls.</span>
-
-            <ul>
-              <li>Team dashboard</li>
-              <li>Per-repo controls</li>
-              <li>Audit history</li>
-            </ul>
-
-            <a href="/login">Start team</a>
-          </article>
+              {plan.ctaEnabled && plan.ctaHref ? (
+                <a href={plan.ctaHref}>{plan.ctaLabel}</a>
+              ) : (
+                <button type="button" disabled>
+                  {plan.ctaLabel}
+                </button>
+              )}
+            </article>
+          ))}
         </div>
       </section>
 

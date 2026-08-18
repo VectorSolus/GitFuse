@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 
 import { auth } from "../../../../lib/auth";
 import { createRazorpaySubscription } from "../../../../lib/billing";
+import {
+  EARLY_ACCESS_COPY,
+  PAID_BILLING_ENABLED,
+} from "../../../../lib/launch-mode";
 
 export const runtime = "nodejs";
 
@@ -22,6 +26,17 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "not_authenticated", message: "Sign in is required." },
       { status: 401 },
+    );
+  }
+
+  if (!PAID_BILLING_ENABLED) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "billing_deferred",
+        message: EARLY_ACCESS_COPY.checkoutDeferred,
+      },
+      { status: 503 },
     );
   }
 

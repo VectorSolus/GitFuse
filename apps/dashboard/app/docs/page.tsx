@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { Fragment } from "react";
 
 import { INSTALL_GUIDES, installCommandRows } from "@/lib/install-commands";
+import { EARLY_ACCESS_COPY } from "@/lib/launch-mode";
 
 const sections = [
   {
@@ -427,16 +428,16 @@ export default function DocsPage() {
           <section id="introduction" className="gf-docs-hero">
             <div className="gf-pill gf-docs-pill">
               <span className="gf-pill-dot" />
-              GitFuse CLI documentation
+              {EARLY_ACCESS_COPY.availability} · GitFuse CLI documentation
             </div>
 
             <h1>Commands for moving commits between machines.</h1>
 
             <p>
               GitFuse syncs local Git commit objects across devices without
-              forcing you to push unfinished WIP commits to GitHub. This docs
-              page covers the frontend command reference and can later be wired
-              to live backend-generated API documentation.
+              forcing you to push unfinished WIP commits to GitHub. GitFuse is
+              available as Free Early Access during launch; Pro and Team plans
+              are Coming Soon.
             </p>
 
             <div className="gf-docs-flow-card">

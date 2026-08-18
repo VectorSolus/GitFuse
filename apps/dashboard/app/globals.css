@@ -622,6 +622,14 @@ select {
   letter-spacing: -0.06em;
 }
 
+.gf-plan .gf-plan-availability {
+  margin-bottom: 0.55rem;
+  color: var(--gf-blue-3);
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
 .gf-plan ul {
   position: relative;
   display: grid;
@@ -642,7 +650,8 @@ select {
   color: var(--gf-blue-3);
 }
 
-.gf-plan a {
+.gf-plan a,
+.gf-plan button {
   position: relative;
   display: flex;
   justify-content: center;
@@ -650,6 +659,7 @@ select {
   border: 1px solid var(--gf-border);
   border-radius: 999px;
   color: white;
+  font: inherit;
   font-weight: 800;
   background: rgba(255, 255, 255, 0.045);
 }
@@ -658,6 +668,13 @@ select {
   color: #02101a;
   border-color: transparent;
   background: linear-gradient(135deg, var(--gf-blue), var(--gf-blue-3));
+}
+
+.gf-plan button:disabled {
+  cursor: default;
+  color: #9db5c8;
+  border-color: rgba(125, 211, 252, 0.12);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .gf-install-section {
@@ -8993,7 +9010,7 @@ body {
   }
 }
 
-/* Upgrade plan page */
+/* Early access plan page */
 
 .gf-upgrade-page {
   width: min(100%, 1360px);
@@ -9988,7 +10005,7 @@ body {
   }
 }
 
-/* Upgrade plan page */
+/* Early access plan page */
 
 .gf-upgrade-page {
   width: min(100%, 1360px);

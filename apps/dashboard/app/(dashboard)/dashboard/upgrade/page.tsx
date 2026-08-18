@@ -6,6 +6,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import { CancelPlanButton } from "@/components/dashboard/cancel-plan-button";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
+import {
+  EARLY_ACCESS_COPY,
+  PAID_BILLING_ENABLED,
+  launchPlanCard,
+} from "@/lib/launch-mode";
 
 type RazorpayCheckoutResponse = {
   razorpay_payment_id: string;
@@ -58,27 +63,37 @@ function buildPlans(
   currentTier: string,
   prices: Partial<Record<"pro" | "team", string>>,
 ): Plan[] {
+  const freeLaunchPlan = launchPlanCard("free")!;
+  const proLaunchPlan = launchPlanCard("pro")!;
+  const teamLaunchPlan = launchPlanCard("team")!;
+
   return [
     {
       name: "Free",
       tier: "free",
-      price: "$0",
-      badge: currentTier === "free" ? "Current" : undefined,
+      price: freeLaunchPlan.priceLabel,
+      badge:
+        currentTier === "free"
+          ? "Current"
+          : EARLY_ACCESS_COPY.availability,
       current: currentTier === "free",
-      description:
-        "For personal testing, local development, and small private sync workflows.",
+      description: freeLaunchPlan.description,
       features: planCapacityFeatures("free"),
       limits: planCapacityLimits("free"),
     },
     {
       name: "Pro",
       tier: "pro",
-      price: prices.pro ?? "$9/mo",
-      badge: currentTier === "pro" ? "Current plan" : "Recommended",
+      price: PAID_BILLING_ENABLED
+        ? prices.pro ?? "$9/mo"
+        : proLaunchPlan.priceLabel,
+      badge:
+        currentTier === "pro"
+          ? "Current plan"
+          : EARLY_ACCESS_COPY.paidAvailability,
       current: currentTier === "pro",
       highlighted: true,
-      description:
-        "For developers who move across machines and want larger private sync capacity.",
+      description: proLaunchPlan.description,
       features: [
         ...planCapacityFeatures("pro"),
         "Priority workspace limits",
@@ -88,11 +103,15 @@ function buildPlans(
     {
       name: "Team",
       tier: "team",
-      price: prices.team ?? "$18/user/mo",
-      badge: currentTier === "team" ? "Current plan" : "For teams",
+      price: PAID_BILLING_ENABLED
+        ? prices.team ?? "$18/user/mo"
+        : teamLaunchPlan.priceLabel,
+      badge:
+        currentTier === "team"
+          ? "Current plan"
+          : EARLY_ACCESS_COPY.paidAvailability,
       current: currentTier === "team",
-      description:
-        "For teams that need shared workspace controls, audit history, and managed access.",
+      description: teamLaunchPlan.description,
       features: [
         ...planCapacityFeatures("team"),
         "Team workspace access",
@@ -155,9 +174,14 @@ export default function UpgradePage() {
     Partial<Record<"pro" | "team", string>>
   >({});
   const currentTier = data?.billing.tier ?? "free";
-  const plans = useMemo(() => buildPlans(currentTier, priceLabels), [currentTier, priceLabels]);
+  const plans = useMemo(
+    () => buildPlans(currentTier, priceLabels),
+    [currentTier, priceLabels],
+  );
 
   useEffect(() => {
+    if (!PAID_BILLING_ENABLED) return;
+
     let cancelled = false;
     async function loadPrices() {
       const entries = await Promise.all(
@@ -176,7 +200,10 @@ export default function UpgradePage() {
       if (!cancelled) {
         setPriceLabels(
           Object.fromEntries(
-            entries.filter((entry): entry is readonly ["pro" | "team", string] => Boolean(entry[1])),
+            entries.filter(
+              (entry): entry is readonly ["pro" | "team", string] =>
+                Boolean(entry[1]),
+            ),
           ),
         );
       }
@@ -190,6 +217,13 @@ export default function UpgradePage() {
 
   async function handleUpgrade(plan: Plan) {
     if (plan.tier === "free") return;
+    if (!PAID_BILLING_ENABLED) {
+      setCheckoutMessage(EARLY_ACCESS_COPY.checkoutDeferred);
+      setCheckoutOpen(true);
+      setCheckoutPendingTier(null);
+      return;
+    }
+
     setCheckoutMessage("");
     setCheckoutPendingTier(plan.tier);
 
@@ -229,7 +263,9 @@ export default function UpgradePage() {
 
       await loadRazorpayCheckout();
       if (!window.Razorpay) {
-        throw new Error("Razorpay Checkout loaded, but window.Razorpay is unavailable.");
+        throw new Error(
+          "Razorpay Checkout loaded, but window.Razorpay is unavailable.",
+        );
       }
 
       const checkout = new window.Razorpay({
@@ -282,12 +318,12 @@ export default function UpgradePage() {
     <div className="gf-upgrade-page">
       <section className="gf-upgrade-hero">
         <div>
-          <p className="gf-dash-eyebrow">Upgrade plan</p>
-          <h2>Scale your private sync workspace when you need more room.</h2>
+          <p className="gf-dash-eyebrow">Early access plans</p>
+          <h2>Free Early Access is open. Paid plans are Coming Soon.</h2>
           <span>
             Compare workspace limits for repositories, devices, storage, and
-            sync history. Upgrades are securely authorized through Razorpay
-            Checkout.
+            sync history. Pro and Team are visible for planning while live
+            Razorpay payments remain deferred.
           </span>
         </div>
 
@@ -297,7 +333,8 @@ export default function UpgradePage() {
           <span>
             {formatLimit(data?.usage.repos.max ?? 5)} repositories ·{" "}
             {formatLimit(data?.usage.devices.max ?? 2)} devices ·{" "}
-            {formatBytes(data?.usage.storage.maxBytes ?? 500 * 1024 * 1024)} storage
+            {formatBytes(data?.usage.storage.maxBytes ?? 500 * 1024 * 1024)}{" "}
+            storage
           </span>
           <Link href="/dashboard/settings?section=billing">
             Billing settings
@@ -347,9 +384,15 @@ export default function UpgradePage() {
               <button
                 type="button"
                 onClick={() => handleUpgrade(plan)}
-                disabled={checkoutPendingTier === plan.tier}
+                disabled={
+                  !PAID_BILLING_ENABLED || checkoutPendingTier === plan.tier
+                }
               >
-                {checkoutPendingTier === plan.tier ? "Opening..." : "Upgrade"}
+                {!PAID_BILLING_ENABLED
+                  ? EARLY_ACCESS_COPY.paidCta
+                  : checkoutPendingTier === plan.tier
+                    ? "Opening..."
+                    : "Upgrade"}
               </button>
             )}
           </article>
@@ -391,10 +434,10 @@ export default function UpgradePage() {
       <section className="gf-upgrade-note-card">
         <div>
           <p className="gf-dash-eyebrow">Billing status</p>
-          <strong>Razorpay subscription billing</strong>
+          <strong>Free Early Access launch mode</strong>
           <span>
-            Razorpay activates plan benefits only after a signed webhook
-            confirms the subscription.
+            {EARLY_ACCESS_COPY.billingDeferred} Existing Razorpay routes,
+            webhooks, and tests remain in place for future approval.
           </span>
         </div>
       </section>
@@ -430,11 +473,10 @@ function UpgradeModal({
           <CloseIcon />
         </button>
 
-        <p className="gf-dash-eyebrow">Upgrade</p>
-        <h2>Checkout is unavailable.</h2>
+        <p className="gf-dash-eyebrow">Early access</p>
+        <h2>Paid plans are Coming Soon.</h2>
         <span>
-          {message ||
-            "Razorpay checkout could not be started. Check the billing configuration and try again."}
+          {message || EARLY_ACCESS_COPY.checkoutDeferred}
         </span>
 
         <div className="gf-upgrade-modal-actions">

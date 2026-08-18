@@ -82,7 +82,7 @@ const pageTitles: Record<string, string> = {
   "/dashboard/history": "History",
   "/dashboard/usage": "Usage",
   "/dashboard/settings": "Settings",
-  "/dashboard/upgrade": "Upgrade plan",
+  "/dashboard/upgrade": "Early access plans",
 };
 
 export function DashboardLayout({
@@ -332,7 +332,7 @@ export function DashboardLayout({
                     onClick={() => setProfileMenuOpen(false)}
                   >
                     <Icon name="upgrade" />
-                    <span>Upgrade plan</span>
+                    <span>Early access plans</span>
                   </Link>
 
                   <Link

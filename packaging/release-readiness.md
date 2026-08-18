@@ -2,6 +2,10 @@
 
 This repository prepares checksummed release artifacts and package-manager metadata for the public installation contract:
 
+## Launch Billing Status
+
+GitFuse launches as Free Early Access. Pro and Team paid plans are Coming Soon, and paid checkout must not be described as available in production until business/payment approval is complete. Keep the existing Razorpay routes, webhooks, tests, and database billing tables intact for future approval work.
+
 ## Public Commands
 
 macOS:

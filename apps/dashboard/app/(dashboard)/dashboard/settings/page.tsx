@@ -28,6 +28,7 @@ import {
   closedPairingPinRevealState,
   PAIRING_PIN_REVEAL_TIMEOUT_MS,
 } from "@/lib/pairing-pin-reveal-state";
+import { EARLY_ACCESS_COPY } from "@/lib/launch-mode";
 
 type SettingsSection =
   | "Profile"
@@ -810,10 +811,10 @@ function BillingSection({
     <>
       <section className="gf-settings-v3-hero">
         <p className="gf-dash-eyebrow">Billing</p>
-        <h2>Manage plan limits without clutter.</h2>
+        <h2>Manage plan limits during Free Early Access.</h2>
         <span>
-          Your current workspace is on the {tier} tier. Razorpay subscription
-          changes are confirmed by the GitFuse billing server.
+          Your current workspace is on the {tier} tier. GitFuse is launching as
+          Free Early Access, with Pro and Team plans Coming Soon.
         </span>
       </section>
 
@@ -843,8 +844,8 @@ function BillingSection({
             <strong>{titleCase(tier)} plan</strong>
             <span>
               {subscriptionStatus
-                ? `Razorpay subscription ${subscriptionStatus}`
-                : "Workspace plan without an active subscription"}
+                ? `Existing Razorpay subscription ${subscriptionStatus}`
+                : EARLY_ACCESS_COPY.billingSummary}
             </span>
           </div>
 
@@ -1429,8 +1430,9 @@ function BillingModal({
         <p className="gf-dash-eyebrow">Billing</p>
         <h2>{titleCase(tier)} workspace</h2>
         <span>
-          Razorpay Checkout handles subscription authorization, while signed
-          webhooks control live plan changes. Current subscription status:{" "}
+          GitFuse is in Free Early Access. Razorpay billing infrastructure
+          remains in place for future approval, but paid checkout is not
+          available now. Current subscription status:{" "}
           {subscriptionStatus ?? "not subscribed"}.
         </span>
 
@@ -1462,16 +1464,16 @@ function BillingModal({
         ) : (
           <div className="gf-settings-upgrade-tile">
             <div>
-              <p>Upgrade path</p>
-              <strong>Need more workspace capacity?</strong>
+              <p>Coming Soon plans</p>
+              <strong>Need more workspace capacity later?</strong>
               <span>
-                Open the upgrade page to review larger limits, longer history,
-                and more private repository capacity.
+                Review planned Pro and Team limits while GitFuse remains in
+                Free Early Access.
               </span>
             </div>
 
             <Link href="/dashboard/upgrade" target="_blank" rel="noreferrer">
-              Upgrade
+              View Coming Soon Plans
               <ExternalArrowIcon />
             </Link>
           </div>
