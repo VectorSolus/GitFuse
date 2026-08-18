@@ -2732,9 +2732,9 @@ select {
   max-width: 720px;
   margin: 0;
   color: white;
-  font-size: clamp(2.2rem, 4vw, 4.2rem);
-  line-height: 0.98;
-  letter-spacing: -0.065em;
+  font-size: 60px;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
 }
 
 .gf-dash-hero-card span {
@@ -3051,7 +3051,9 @@ select {
   }
 
   .gf-dash-hero-card h2 {
-    font-size: 2.45rem;
+    font-size: 60px;
+    line-height: 0.95;
+    letter-spacing: -0.01em;
   }
 
   .gf-dash-step {
@@ -3150,9 +3152,9 @@ select {
   max-width: 720px;
   margin: 0;
   color: white;
-  font-size: clamp(2.75rem, 5.2vw, 5.2rem);
-  line-height: 0.94;
-  letter-spacing: -2px;
+  font-size: 60px;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
   font-weight: 980;
 }
 
@@ -3399,7 +3401,9 @@ select {
   }
 
   .gf-dash-welcome-card h2 {
-    font-size: 2.75rem;
+    font-size: 60px;
+    line-height: 0.95;
+    letter-spacing: -0.01em;
   }
 
   .gf-dash-code-panel code {
@@ -3637,9 +3641,9 @@ select {
   max-width: 720px;
   margin: 0;
   color: white;
-  font-size: clamp(2.35rem, 4.8vw, 4.85rem);
+  font-size: 60px;
   line-height: 0.95;
-  letter-spacing: -0.075em;
+  letter-spacing: -0.01em;
 }
 
 .gf-repos-hero span {
@@ -3882,7 +3886,9 @@ select {
   }
 
   .gf-repos-hero h2 {
-    font-size: 2.7rem;
+    font-size: 60px;
+    line-height: 0.95;
+    letter-spacing: -0.01em;
   }
 }
 
@@ -3922,9 +3928,9 @@ select {
   max-width: 760px;
   margin: 0;
   color: white;
-  font-size: clamp(2.15rem, 4vw, 4.05rem);
+  font-size: 60px;
   line-height: 0.95;
-  letter-spacing: -0.075em;
+  letter-spacing: -0.01em;
 }
 
 .gf-repos-hero-v3 span {
@@ -4165,7 +4171,9 @@ select {
   }
 
   .gf-repos-hero-v3 h2 {
-    font-size: 2.65rem;
+    font-size: 60px;
+    line-height: 0.95;
+    letter-spacing: -0.01em;
   }
 }
 
@@ -4426,9 +4434,9 @@ select {
   max-width: 820px;
   margin: 0;
   color: white;
-  font-size: clamp(2.25rem, 4.4vw, 4.4rem);
+  font-size: 60px;
   line-height: 0.95;
-  letter-spacing: -0.075em;
+  letter-spacing: -0.01em;
 }
 
 .gf-devices-hero span {
@@ -5008,7 +5016,9 @@ select {
   }
 
   .gf-devices-hero h2 {
-    font-size: 2.65rem;
+    font-size: 60px;
+    line-height: 0.95;
+    letter-spacing: -0.01em;
   }
 
   .gf-devices-card-list {
@@ -5050,9 +5060,9 @@ select {
   max-width: 860px;
   margin: 0;
   color: white;
-  font-size: clamp(2.2rem, 4.2vw, 4.4rem);
+  font-size: 60px;
   line-height: 0.95;
-  letter-spacing: -0.075em;
+  letter-spacing: -0.01em;
 }
 
 .gf-history-hero span {
@@ -5664,7 +5674,9 @@ select {
   }
 
   .gf-history-hero h2 {
-    font-size: 2.65rem;
+    font-size: 60px;
+    line-height: 0.95;
+    letter-spacing: -0.01em;
   }
 }
 
@@ -6825,9 +6837,9 @@ body {
   max-width: 850px;
   margin: 0;
   color: white;
-  font-size: clamp(2.3rem, 4.5vw, 4.7rem);
-  line-height: 0.92;
-  letter-spacing: -0.08em;
+  font-size: 60px;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
 }
 
 .gf-usage-hero span {
@@ -7379,9 +7391,9 @@ body {
   margin: 0;
   max-width: 760px;
   color: white;
-  font-size: clamp(2rem, 4vw, 4rem);
+  font-size: 60px;
   line-height: 0.95;
-  letter-spacing: -0.075em;
+  letter-spacing: -0.01em;
 }
 
 .gf-settings-hero-v2 span,
@@ -7852,9 +7864,9 @@ body {
   max-width: 820px;
   margin: 0;
   color: white;
-  font-size: clamp(2.4rem, 5vw, 4.7rem);
-  line-height: 0.9;
-  letter-spacing: -0.085em;
+  font-size: 60px;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
 }
 
 .gf-settings-v3-hero span {
@@ -9078,9 +9090,9 @@ body {
   max-width: 960px;
   margin: 0;
   color: white;
-  font-size: clamp(3rem, 7vw, 6.8rem);
-  line-height: 0.88;
-  letter-spacing: -0.09em;
+  font-size: 60px;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
 }
 
 .gf-upgrade-hero span {
@@ -10073,9 +10085,9 @@ body {
   max-width: 960px;
   margin: 0;
   color: white;
-  font-size: clamp(3rem, 7vw, 6.8rem);
-  line-height: 0.88;
-  letter-spacing: -0.09em;
+  font-size: 60px;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
 }
 
 .gf-upgrade-hero span {
@@ -10472,53 +10484,31 @@ body {
   }
 }
 
-/* Dashboard hero headline cleanup */
-.gf-dash-hero-card h2,
-.gf-dash-welcome-card h2,
-.gf-repos-hero h2,
-.gf-repos-hero-v3 h2,
-.gf-devices-hero h2,
-.gf-history-hero h2,
-.gf-usage-hero h2,
-.gf-settings-hero-v2 h2,
-.gf-settings-v3-hero h2,
-.gf-upgrade-hero h2 {
-  font-size: 60px;
-  letter-spacing: -0.01em;
-}
-
-/* Phase62 dashboard hero typography normalization
-   Keep all dashboard app hero headlines visually consistent. */
-
-.gf-dash-main :is(
-  .gf-dash-hero-card,
-  .gf-dash-welcome-card,
-  .gf-repos-hero,
-  .gf-repos-hero-v3,
-  .gf-devices-hero,
-  .gf-history-hero,
-  .gf-usage-hero,
-  .gf-settings-hero-v2,
-  .gf-upgrade-hero
-) h2 {
+/* Phase62 dashboard hero typography final guard */
+.gf-dash-main .gf-dash-hero-card h2,
+.gf-dash-main .gf-dash-welcome-card h2,
+.gf-dash-main .gf-repos-hero h2,
+.gf-dash-main .gf-repos-hero-v3 h2,
+.gf-dash-main .gf-devices-hero h2,
+.gf-dash-main .gf-history-hero h2,
+.gf-dash-main .gf-usage-hero h2,
+.gf-dash-main .gf-settings-hero-v2 h2,
+.gf-dash-main .gf-upgrade-hero h2 {
   font-size: 60px !important;
   line-height: 0.95 !important;
   letter-spacing: -0.01em !important;
 }
 
-/* Keep the same dashboard hero typography even where older mobile rules exist. */
 @media (max-width: 760px) {
-  .gf-dash-main :is(
-    .gf-dash-hero-card,
-    .gf-dash-welcome-card,
-    .gf-repos-hero,
-    .gf-repos-hero-v3,
-    .gf-devices-hero,
-    .gf-history-hero,
-    .gf-usage-hero,
-    .gf-settings-hero-v2,
-    .gf-upgrade-hero
-  ) h2 {
+  .gf-dash-main .gf-dash-hero-card h2,
+  .gf-dash-main .gf-dash-welcome-card h2,
+  .gf-dash-main .gf-repos-hero h2,
+  .gf-dash-main .gf-repos-hero-v3 h2,
+  .gf-dash-main .gf-devices-hero h2,
+  .gf-dash-main .gf-history-hero h2,
+  .gf-dash-main .gf-usage-hero h2,
+  .gf-dash-main .gf-settings-hero-v2 h2,
+  .gf-dash-main .gf-upgrade-hero h2 {
     font-size: 60px !important;
     line-height: 0.95 !important;
     letter-spacing: -0.01em !important;
