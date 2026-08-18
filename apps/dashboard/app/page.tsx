@@ -164,7 +164,10 @@ export default function HomePage() {
 
               <span className="gf-provider-stack" aria-hidden="true">
                 <span className="gf-provider-orb gf-provider-orb--github">
-                  <svg viewBox="0 0 24 24" width="19" height="19">
+                  <svg
+                    className="gf-provider-icon gf-provider-icon--github"
+                    viewBox="0 0 24 24"
+                  >
                     <path
                       fill="currentColor"
                       d="M12 0C5.37 0 0 5.5 0 12.3c0 5.44 3.44 10.05 8.2 11.68.6.12.82-.27.82-.59 0-.29-.01-1.06-.02-2.08-3.34.74-4.04-1.65-4.04-1.65-.55-1.42-1.34-1.8-1.34-1.8-1.09-.76.08-.75.08-.75 1.2.09 1.84 1.27 1.84 1.27 1.07 1.88 2.81 1.34 3.5 1.02.11-.79.42-1.34.76-1.64-2.67-.31-5.47-1.37-5.47-6.1 0-1.35.47-2.45 1.24-3.31-.12-.31-.54-1.57.12-3.26 0 0 1.01-.33 3.3 1.27A11.2 11.2 0 0 1 12 5.95c1.02 0 2.05.14 3.01.41 2.29-1.6 3.3-1.27 3.3-1.27.66 1.69.24 2.95.12 3.26.77.86 1.24 1.96 1.24 3.31 0 4.74-2.81 5.78-5.49 6.09.43.38.81 1.12.81 2.26 0 1.63-.01 2.95-.01 3.35 0 .33.22.72.83.59A12.25 12.25 0 0 0 24 12.3C24 5.5 18.63 0 12 0Z"
@@ -172,10 +175,55 @@ export default function HomePage() {
                   </svg>
                 </span>
                 <span className="gf-provider-orb gf-provider-orb--google">
-                  <span>G</span>
+                  <svg
+                    className="gf-provider-icon gf-provider-icon--google"
+                    viewBox="0 0 24 24"
+                  >
+                    <defs>
+                      <clipPath id="gf-google-g-clip">
+                        <path d="M12.48 10.92v3.28h7.84c-.24 1.88-.88 3.24-1.79 4.19-1.12 1.12-2.88 2.35-6.05 2.35-4.83 0-8.6-3.89-8.6-8.72s3.77-8.72 8.6-8.72c2.61 0 4.52 1.03 5.93 2.36l2.3-2.3C18.77 1.44 16.17 0 12.48 0 5.83 0 0 5.42 0 12.02s5.83 12.02 12.48 12.02c3.67 0 6.44-1.21 8.58-3.45 2.22-2.22 2.91-5.35 2.91-7.87 0-.78-.06-1.49-.17-2.1H12.48Z" />
+                      </clipPath>
+                    </defs>
+                    <g clipPath="url(#gf-google-g-clip)">
+                      <rect width="12" height="9" fill="#ea4335" />
+                      <rect y="9" width="12" height="6" fill="#fbbc05" />
+                      <rect y="15" width="12" height="9" fill="#34a853" />
+                      <rect x="12" width="12" height="24" fill="#4285f4" />
+                    </g>
+                  </svg>
                 </span>
                 <span className="gf-provider-orb gf-provider-orb--mail">
-                  <span>M</span>
+                  <svg
+                    className="gf-provider-icon gf-provider-icon--mail"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <path
+                      d="M4.25 18V7.25"
+                      stroke="#4285f4"
+                      strokeWidth="3.5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M19.75 7.25V18"
+                      stroke="#34a853"
+                      strokeWidth="3.5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="m4.4 7.1 7.6 5.7 7.6-5.7"
+                      stroke="#ea4335"
+                      strokeWidth="3.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="m17.25 8.86 2.35-1.76"
+                      stroke="#fbbc04"
+                      strokeWidth="3.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
                 </span>
               </span>
             </a>

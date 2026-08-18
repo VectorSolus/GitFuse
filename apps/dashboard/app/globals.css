@@ -2347,9 +2347,26 @@ select {
   will-change: transform, filter, opacity;
 }
 
-.gf-provider-orb svg {
-  width: 1.08rem;
-  height: 1.08rem;
+.gf-provider-icon {
+  display: block;
+  width: 1.18rem;
+  height: 1.18rem;
+  flex: none;
+}
+
+.gf-provider-icon--github {
+  width: 1.12rem;
+  height: 1.12rem;
+}
+
+.gf-provider-icon--google {
+  width: 1.16rem;
+  height: 1.16rem;
+}
+
+.gf-provider-icon--mail {
+  width: 1.22rem;
+  height: 1.22rem;
 }
 
 .gf-provider-orb--github {
@@ -2369,26 +2386,12 @@ select {
   animation-delay: -8s;
 }
 
-.gf-provider-orb--google > span {
-  color: transparent;
-  background: linear-gradient(
-    135deg,
-    #4285f4 12%,
-    #34a853 38%,
-    #fbbc05 62%,
-    #ea4335 86%
-  );
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
 .gf-provider-orb--mail {
-  color: white;
-  background: linear-gradient(145deg, #22d3ee, #2563eb 48%, #ec4899);
+  border-color: rgba(255, 255, 255, 0.82);
+  background: #f8fbff;
   box-shadow:
-    0 0 15px rgba(37, 99, 235, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+    0 0 15px rgba(234, 67, 53, 0.38),
+    inset 0 1px 0 white;
   animation-delay: -4s;
 }
 
