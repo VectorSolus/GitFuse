@@ -96,11 +96,6 @@ export default function HomePage() {
           <a href="#install">Install</a>
         </nav>
 
-        <div className="gf-header-actions">
-          <a href="/login" className="gf-primary-small">
-            {EARLY_ACCESS_COPY.freeCta}
-          </a>
-        </div>
       </header>
 
       <section className="gf-hero">
@@ -153,21 +148,39 @@ export default function HomePage() {
           </form>
 
           <div className="gf-hero-actions">
-            <a href="/login" className="gf-github-signin-button">
-              <span>Sign in</span>
+            <div className="gf-hero-auth-shortcuts">
+              <a href="/login" className="gf-github-signin-button">
+                <span>Sign in</span>
 
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                width="19"
-                height="19"
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  width="19"
+                  height="19"
+                >
+                  <path
+                    fill="currentColor"
+                    d="M12 0C5.37 0 0 5.5 0 12.3c0 5.44 3.44 10.05 8.2 11.68.6.12.82-.27.82-.59 0-.29-.01-1.06-.02-2.08-3.34.74-4.04-1.65-4.04-1.65-.55-1.42-1.34-1.8-1.34-1.8-1.09-.76.08-.75.08-.75 1.2.09 1.84 1.27 1.84 1.27 1.07 1.88 2.81 1.34 3.5 1.02.11-.79.42-1.34.76-1.64-2.67-.31-5.47-1.37-5.47-6.1 0-1.35.47-2.45 1.24-3.31-.12-.31-.54-1.57.12-3.26 0 0 1.01-.33 3.3 1.27A11.2 11.2 0 0 1 12 5.95c1.02 0 2.05.14 3.01.41 2.29-1.6 3.3-1.27 3.3-1.27.66 1.69.24 2.95.12 3.26.77.86 1.24 1.96 1.24 3.31 0 4.74-2.81 5.78-5.49 6.09.43.38.81 1.12.81 2.26 0 1.63-.01 2.95-.01 3.35 0 .33.22.72.83.59A12.25 12.25 0 0 0 24 12.3C24 5.5 18.63 0 12 0Z"
+                  />
+                </svg>
+              </a>
+
+              <a
+                href="/login"
+                className="gf-auth-icon-button"
+                aria-label="Sign in with Google"
               >
-                <path
-                  fill="currentColor"
-                  d="M12 0C5.37 0 0 5.5 0 12.3c0 5.44 3.44 10.05 8.2 11.68.6.12.82-.27.82-.59 0-.29-.01-1.06-.02-2.08-3.34.74-4.04-1.65-4.04-1.65-.55-1.42-1.34-1.8-1.34-1.8-1.09-.76.08-.75.08-.75 1.2.09 1.84 1.27 1.84 1.27 1.07 1.88 2.81 1.34 3.5 1.02.11-.79.42-1.34.76-1.64-2.67-.31-5.47-1.37-5.47-6.1 0-1.35.47-2.45 1.24-3.31-.12-.31-.54-1.57.12-3.26 0 0 1.01-.33 3.3 1.27A11.2 11.2 0 0 1 12 5.95c1.02 0 2.05.14 3.01.41 2.29-1.6 3.3-1.27 3.3-1.27.66 1.69.24 2.95.12 3.26.77.86 1.24 1.96 1.24 3.31 0 4.74-2.81 5.78-5.49 6.09.43.38.81 1.12.81 2.26 0 1.63-.01 2.95-.01 3.35 0 .33.22.72.83.59A12.25 12.25 0 0 0 24 12.3C24 5.5 18.63 0 12 0Z"
-                />
-              </svg>
-            </a>
+                G
+              </a>
+
+              <a
+                href="/login"
+                className="gf-auth-icon-button"
+                aria-label="Sign in with email"
+              >
+                M
+              </a>
+            </div>
 
             <a href="#install" className="gf-secondary-button">
               Install CLI
