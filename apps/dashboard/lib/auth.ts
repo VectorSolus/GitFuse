@@ -28,6 +28,8 @@ const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
 const authSecret =
   process.env.AUTH_SECRET?.trim() ?? process.env.NEXTAUTH_SECRET?.trim();
 
+export const AUTH_SESSION_MAX_AGE_SECONDS = 15 * 24 * 60 * 60;
+
 if (!authSecret) {
   throw new Error("AUTH_SECRET or NEXTAUTH_SECRET is required");
 }
@@ -119,6 +121,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: authSecret,
 
   trustHost: true,
+
+  session: {
+    strategy: "jwt",
+    maxAge: AUTH_SESSION_MAX_AGE_SECONDS,
+  },
+
+  jwt: {
+    maxAge: AUTH_SESSION_MAX_AGE_SECONDS,
+  },
 
   providers,
 

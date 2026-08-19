@@ -75,9 +75,9 @@ function buildPlans(
       badge:
         currentTier === "free"
           ? "Current"
-          : EARLY_ACCESS_COPY.availability,
+          : "Free",
       current: currentTier === "free",
-      description: freeLaunchPlan.description,
+      description: "For individual developers syncing private work across devices.",
       features: planCapacityFeatures("free"),
       limits: planCapacityLimits("free"),
     },
@@ -318,12 +318,12 @@ export default function UpgradePage() {
     <div className="gf-upgrade-page">
       <section className="gf-upgrade-hero">
         <div>
-          <p className="gf-dash-eyebrow">Early access plans</p>
-          <h2>Free Early Access is open. Paid plans are Coming Soon.</h2>
+          <p className="gf-dash-eyebrow">Upgrade plans</p>
+          <h2>Free is available. Paid plans are Coming Soon.</h2>
           <span>
             Compare workspace limits for repositories, devices, storage, and
-            sync history. Pro and Team are visible for planning while live
-            Razorpay payments remain deferred.
+            sync history. Pro and Team are visible for planning and remain
+            Coming Soon.
           </span>
         </div>
 
@@ -431,17 +431,6 @@ export default function UpgradePage() {
         </div>
       </section>
 
-      <section className="gf-upgrade-note-card">
-        <div>
-          <p className="gf-dash-eyebrow">Billing status</p>
-          <strong>Free Early Access launch mode</strong>
-          <span>
-            {EARLY_ACCESS_COPY.billingDeferred} Existing Razorpay routes,
-            webhooks, and tests remain in place for future approval.
-          </span>
-        </div>
-      </section>
-
       {checkoutOpen ? (
         <UpgradeModal
           message={checkoutMessage}
@@ -473,7 +462,7 @@ function UpgradeModal({
           <CloseIcon />
         </button>
 
-        <p className="gf-dash-eyebrow">Early access</p>
+        <p className="gf-dash-eyebrow">Upgrade plans</p>
         <h2>Paid plans are Coming Soon.</h2>
         <span>
           {message || EARLY_ACCESS_COPY.checkoutDeferred}

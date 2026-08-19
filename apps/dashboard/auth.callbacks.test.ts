@@ -2,6 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authState = vi.hoisted(() => ({
   config: null as null | {
+    session: {
+      strategy: string;
+      maxAge: number;
+    };
+    jwt: {
+      maxAge: number;
+    };
     callbacks: {
       signIn: (input: {
         account?: { provider: string; providerAccountId?: string } | null;
@@ -92,6 +99,18 @@ beforeEach(async () => {
 });
 
 describe("Auth.js database callbacks", () => {
+  it("keeps browser sessions valid for 15 days", () => {
+    const fifteenDaysInSeconds = 15 * 24 * 60 * 60;
+
+    expect(authState.config?.session).toEqual({
+      strategy: "jwt",
+      maxAge: fifteenDaysInSeconds,
+    });
+    expect(authState.config?.jwt).toEqual({
+      maxAge: fifteenDaysInSeconds,
+    });
+  });
+
   it("allows OAuth sign-in when the database is available", async () => {
     const result = await authState.config?.callbacks.signIn({
       account: {
