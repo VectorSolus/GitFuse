@@ -112,7 +112,7 @@ done
 
 check_file "$DOCS"
 check_contains "$DOCS" "curl -fsSL https://gitfuse.dev/install.sh | sh" "docs include curl installer command"
-check_contains "$DOCS" "brew tap gitfuse/tap" "docs include brew tap command"
+check_contains "$DOCS" "brew tap VectorSolus/gitfuse https://github.com/VectorSolus/GitFuse.git" "docs include brew tap command"
 check_contains "$DOCS" "brew install gitfuse" "docs include brew install command"
 check_contains "$DOCS" "winget install GitFuse.GitFuse" "docs include winget install command"
 
